@@ -1,0 +1,26 @@
+hog:
+  image_width: 40
+  image_height: 64
+  orientations: 9
+  pixels_per_cell: [4, 4]
+  cells_per_block: [2, 2]
+  block_norm: L2-Hys
+  transform_sqrt: false
+
+normalization:
+  blur_kernel: 3
+  min_component_area: 8
+  bbox_margin_px: 2
+  output_width: 40
+  output_height: 64
+  foreground: white
+
+training:
+  model_type: linear_svc
+  test_size: 0.2
+  group_by: frame
+  random_state: 42
+  knn_neighbors: 3
+  knn_weights: distance
+  svc_c: 1.0
+  use_standard_scaler: true
