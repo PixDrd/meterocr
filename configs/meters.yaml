@@ -1,5 +1,6 @@
 meters:
   - meter_id: M1
+    video_device: /dev/video0
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
@@ -16,6 +17,7 @@ meters:
       - { x: 384, y: 0, w: 92, h: 120 }
 
   - meter_id: M2
+    video_device: /dev/video2
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
@@ -32,6 +34,7 @@ meters:
       - { x: 384, y: 0, w: 92, h: 120 }
 
   - meter_id: M3
+    video_device: /dev/video4
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu

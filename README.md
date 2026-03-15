@@ -191,18 +191,24 @@ Mean confidence: 2.105
 
 ### Live USB webcam
 
-One process per meter. Match `--device` to the webcam index reported by `list-webcams`:
+The webcam device is read from `video_device` in `meters.yaml`, so normally no extra flags are needed:
 
 ```bash
-meteocr watch --meter M1 --device 0
-meteocr watch --meter M2 --device 1
-meteocr watch --meter M3 --device 2
+meteocr watch --meter M1
+meteocr watch --meter M2
+meteocr watch --meter M3
+```
+
+Override the device at runtime if needed:
+
+```bash
+meteocr watch --meter M1 --device /dev/video0
 ```
 
 The default capture interval is 60 seconds. Adjust with `--interval`:
 
 ```bash
-meteocr watch --meter M1 --device 0 --interval 300
+meteocr watch --meter M1 --interval 300
 ```
 
 ### Offline testing with test images
@@ -270,6 +276,7 @@ Focus labeling effort on frames where the model was uncertain or wrong. The revi
 ```yaml
 meters:
   - meter_id: M1
+    video_device: /dev/video0 # full device path for the USB webcam for this meter
     aligned_width: 500        # width of the canonical aligned crop (pixels)
     aligned_height: 120       # height of the canonical aligned crop (pixels)
     threshold_mode: otsu      # 'otsu' or 'adaptive'
@@ -289,6 +296,8 @@ meters:
       - { x: 288, y: 0, w: 92, h: 120 }
       - { x: 384, y: 0, w: 92, h: 120 }
 ```
+
+`video_device` should be the full device path (e.g. `/dev/video0`, `/dev/video2`). This keeps the meter-to-camera assignment stable across reboots when combined with udev rules. You can override it at runtime with `--device`.
 
 For perspective-distorted meters, replace `crop_source_box` with `perspective_src_points` (four corner points of the meter face in the raw frame, top-left → top-right → bottom-right → bottom-left).
 

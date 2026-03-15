@@ -118,7 +118,7 @@ def test_build_capture_set_missing_source_raises():
     with pytest.raises(ValueError, match="No capture source"):
         build_capture_set(
             meter_ids=["M1"],
-            webcam_indices={},
+            webcam_devices={},
             test_image_dirs={},
             offline=False,
         )

@@ -27,16 +27,20 @@ class CaptureError(RuntimeError):
 
 
 class WebcamCapture:
-    """Capture frames from a USB webcam identified by device index.
+    """Capture frames from a USB webcam.
 
     Resolution defaults to 1920x1080 with MJPG encoding, which is the maximum
     supported by most USB webcams and avoids the bandwidth limit of raw YUYV.
     Pass explicit width/height to override.
 
+    The device can be specified as a full device path (e.g. '/dev/video0') or
+    as an integer index (e.g. 0).  Prefer the full path so the correct camera
+    is always used regardless of enumeration order on boot.
+
     Args:
-        device_index: OpenCV camera index (0, 1, 2, ...).
-        width: Desired capture width in pixels. Defaults to 1920.
-        height: Desired capture height in pixels. Defaults to 1080.
+        device: Device path string (e.g. '/dev/video0') or integer index.
+        width: Desired capture width in pixels, or None to use camera default.
+        height: Desired capture height in pixels, or None to use camera default.
     """
 
     def __init__(
@@ -45,17 +49,17 @@ class WebcamCapture:
         width: int = 1920,
         height: int = 1080,
     ) -> None:
-        self._device_index = device_index
+        self._device = device
         self._width = width
         self._height = height
         self._cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
         """Open the webcam. Raises CaptureError if unavailable."""
-        cap = cv2.VideoCapture(self._device_index)
+        cap = cv2.VideoCapture(self._device)
         if not cap.isOpened():
             raise CaptureError(
-                f"Cannot open webcam at device index {self._device_index}"
+                f"Cannot open webcam at device '{self._device}'"
             )
         # Request MJPG encoding before setting resolution; this is required for
         # USB webcams to deliver full 1920x1080 without hitting the USB 2.0
@@ -85,7 +89,7 @@ class WebcamCapture:
         ret, frame = self._cap.read()
         if not ret or frame is None:
             raise CaptureError(
-                f"Failed to read frame from webcam {self._device_index}"
+                f"Failed to read frame from webcam '{self._device}'"
             )
         return frame
 
@@ -279,20 +283,21 @@ class MeterCaptureSet:
 
 def build_capture_set(
     meter_ids: list[str],
-    webcam_indices: dict[str, int] | None = None,
+    webcam_devices: dict[str, str | int] | None = None,
     test_image_dirs: dict[str, Path] | None = None,
     offline: bool = False,
 ) -> MeterCaptureSet:
     """Build a MeterCaptureSet from config parameters.
 
     When offline=True, all meters use TestImageCapture from test_image_dirs.
-    When offline=False, meters listed in webcam_indices use WebcamCapture;
+    When offline=False, meters listed in webcam_devices use WebcamCapture;
     any remaining meters fall back to TestImageCapture if available in
     test_image_dirs.
 
     Args:
         meter_ids: List of meter IDs to set up (e.g. ['M1', 'M2', 'M3']).
-        webcam_indices: Mapping from meter_id to device index for live cameras.
+        webcam_devices: Mapping from meter_id to device path (e.g. '/dev/video0')
+            or integer index.  Typically populated from meters.yaml.
         test_image_dirs: Mapping from meter_id to test image directory.
         offline: Force all meters to use test images.
 
@@ -302,18 +307,18 @@ def build_capture_set(
     Raises:
         ValueError: If a meter has no viable capture source.
     """
-    webcam_indices = webcam_indices or {}
+    webcam_devices = webcam_devices or {}
     test_image_dirs = test_image_dirs or {}
 
     sources: dict[str, WebcamCapture | TestImageCapture] = {}
     for mid in meter_ids:
-        if not offline and mid in webcam_indices:
-            sources[mid] = WebcamCapture(webcam_indices[mid])
+        if not offline and mid in webcam_devices:
+            sources[mid] = WebcamCapture(webcam_devices[mid])
         elif mid in test_image_dirs:
             sources[mid] = TestImageCapture(test_image_dirs[mid])
         else:
             raise ValueError(
                 f"No capture source available for meter '{mid}'. "
-                "Provide a webcam index or a test image directory."
+                "Set video_device in meters.yaml or provide a test image directory."
             )
     return MeterCaptureSet(sources)

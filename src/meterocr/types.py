@@ -41,6 +41,7 @@ class MeterConfig:
     max_translation_px: int = 0
     inner_pad_x: int = 0
     inner_pad_y: int = 0
+    video_device: str | None = None
 
 
 @dataclass(frozen=True)

@@ -158,7 +158,7 @@ def cmd_watch(
     model: Annotated[Path, typer.Option("--model", help="Path to model bundle")] = _DEFAULT_MODEL,
     configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
     defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
-    device: Annotated[Optional[int], typer.Option("--device", help="USB webcam device index")] = None,
+    device: Annotated[Optional[str], typer.Option("--device", help="Override webcam device (e.g. /dev/video0); uses meters.yaml value by default")] = None,
     offline: Annotated[bool, typer.Option("--offline", help="Use test images instead of webcam")] = False,
     test_images: Annotated[Optional[Path], typer.Option("--test-images", help="Directory with test images for this meter")] = None,
     interval: Annotated[float, typer.Option("--interval", help="Seconds between captures")] = 60.0,
@@ -172,22 +172,31 @@ def cmd_watch(
 ) -> None:
     """Watch a meter and emit periodic stable readings.
 
-    Use --device N for a live USB webcam, or --offline with --test-images for
-    offline testing against pre-recorded images.
+    The webcam device is read from meters.yaml (video_device field).
+    Use --device to override it on the command line.
+    Use --offline with --test-images for offline testing.
     """
     meter_configs = load_meter_configs(configs)
     _, norm_cfg, _ = load_default_configs(defaults)
     meter_config = get_meter_config(meter_configs, meter)
     bundle = load_model_bundle(model)
 
-    # Resolve capture source
-    if offline or device is None:
+    # Resolve capture source: CLI flag > meters.yaml > offline fallback
+    if offline:
         img_dir = test_images or (_DEFAULT_TEST_IMAGES_ROOT / meter)
         capture = TestImageCapture(img_dir, loop=loop)
         typer.echo(f"Offline mode: reading test images from {img_dir}")
     else:
-        capture = WebcamCapture(device_index=device)
-        typer.echo(f"Live mode: webcam device {device}")
+        resolved_device: str | int | None = device or meter_config.video_device
+        if resolved_device is None:
+            typer.echo(
+                f"Error: no video_device configured for meter {meter} in meters.yaml "
+                "and --device was not provided. Use --offline for test images.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        capture = WebcamCapture(resolved_device)
+        typer.echo(f"Live mode: webcam device '{resolved_device}'")
 
     state = MeterState(meter_id=meter)
     predictions_csv.parent.mkdir(parents=True, exist_ok=True)
