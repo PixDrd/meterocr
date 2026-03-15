@@ -91,24 +91,23 @@ Edit `configs/meters.yaml` to match your actual camera positions.
 
 For each meter you need:
 
+- `video_device` — the webcam device path for this meter (e.g. `/dev/video0`)
 - `crop_source_box` — the rectangle in the raw camera frame that contains the meter display (`x, y, w, h` in pixels)
 - `aligned_width` / `aligned_height` — the canonical size you want to work with
 - `digit_boxes` — one box per digit wheel, in left-to-right order, relative to the aligned crop
 
-Start by capturing a test frame from each camera and measuring the coordinates in an image viewer (e.g. GIMP, Preview):
+Start by identifying which device belongs to which meter:
 
 ```bash
-# List detected USB webcam device indices
-meteocr list-webcams
+meterocr list-webcams
+```
 
-# Grab a single frame for inspection (use predict with a dummy model, or just use OpenCV directly)
-python - <<'EOF'
-import cv2
-cap = cv2.VideoCapture(0)   # adjust index
-ret, frame = cap.read()
-cv2.imwrite("test_frame_M1.png", frame)
-cap.release()
-EOF
+Then capture a reference frame from each camera to measure coordinates in an image viewer (e.g. GIMP, Preview):
+
+```bash
+meterocr capture-frame --meter M1 --output data/raw/ref_M1.png
+meterocr capture-frame --meter M2 --output data/raw/ref_M2.png
+meterocr capture-frame --meter M3 --output data/raw/ref_M3.png
 ```
 
 Then update `configs/meters.yaml` with the measured coordinates.
@@ -120,9 +119,9 @@ Then update `configs/meters.yaml` with the measured coordinates.
 For each meter, capture frames and label the full reading:
 
 ```bash
-meteocr label-frame --meter M1 --image path/to/frame.png --reading 03506
-meteocr label-frame --meter M2 --image path/to/frame.png --reading 01234
-meteocr label-frame --meter M3 --image path/to/frame.png --reading 07890
+meterocr label-frame --meter M1 --image path/to/frame.png --reading 03506
+meterocr label-frame --meter M2 --image path/to/frame.png --reading 01234
+meterocr label-frame --meter M3 --image path/to/frame.png --reading 07890
 ```
 
 This writes to `data/labels/frames.csv` and `data/labels/samples.csv`, and saves raw cell images and normalized images to `data/cells/` and `data/normalized/`.
@@ -136,7 +135,7 @@ Inspect the normalized images to verify that the digit shapes look clean and con
 ## Train
 
 ```bash
-meteocr train
+meterocr train
 ```
 
 Uses `data/labels/samples.csv` and saves the model to `models/digit_clf.joblib`.
@@ -144,7 +143,7 @@ Uses `data/labels/samples.csv` and saves the model to `models/digit_clf.joblib`.
 To specify paths explicitly:
 
 ```bash
-meteocr train --samples data/labels/samples.csv --model models/digit_clf.joblib
+meterocr train --samples data/labels/samples.csv --model models/digit_clf.joblib
 ```
 
 The model bundle contains the classifier, scaler, HOG config, and normalization config. The same bundle is used for all subsequent inference.
@@ -154,7 +153,7 @@ The model bundle contains the classifier, scaler, HOG config, and normalization 
 ## Evaluate
 
 ```bash
-meteocr evaluate
+meterocr evaluate
 ```
 
 Splits samples by frame group (no leakage), runs the classifier on the validation set, and writes reports to `data/reports/`:
@@ -169,7 +168,7 @@ Splits samples by frame group (no leakage), runs the classifier on the validatio
 ## Predict a single frame
 
 ```bash
-meteocr predict --meter M1 --image path/to/frame.png
+meterocr predict --meter M1 --image path/to/frame.png
 ```
 
 Output:
@@ -194,21 +193,21 @@ Mean confidence: 2.105
 The webcam device is read from `video_device` in `meters.yaml`, so normally no extra flags are needed:
 
 ```bash
-meteocr watch --meter M1
-meteocr watch --meter M2
-meteocr watch --meter M3
+meterocr watch --meter M1
+meterocr watch --meter M2
+meterocr watch --meter M3
 ```
 
 Override the device at runtime if needed:
 
 ```bash
-meteocr watch --meter M1 --device /dev/video0
+meterocr watch --meter M1 --device /dev/video0
 ```
 
 The default capture interval is 60 seconds. Adjust with `--interval`:
 
 ```bash
-meteocr watch --meter M1 --interval 300
+meterocr watch --meter M1 --interval 300
 ```
 
 ### Offline testing with test images
@@ -216,19 +215,19 @@ meteocr watch --meter M1 --interval 300
 Put images in `data/test_images/M1/`, `data/test_images/M2/`, `data/test_images/M3/` (any common image format, sorted by filename).
 
 ```bash
-meteocr watch --meter M1 --offline
+meterocr watch --meter M1 --offline
 ```
 
 Or point to a custom directory:
 
 ```bash
-meteocr watch --meter M1 --offline --test-images path/to/images/
+meterocr watch --meter M1 --offline --test-images path/to/images/
 ```
 
 Add `--loop` to cycle through the images repeatedly:
 
 ```bash
-meteocr watch --meter M1 --offline --loop --interval 0
+meterocr watch --meter M1 --offline --loop --interval 0
 ```
 
 ### Watch output
@@ -246,7 +245,7 @@ Uncertain/rejected frames go to `data/labels/review_queue.csv` and optionally sa
 ### Confidence and plausibility tuning
 
 ```bash
-meteocr watch --meter M1 --device 0 \
+meterocr watch --meter M1 \
   --min-confidence 0.8 \
   --max-delta-hour 50
 ```
@@ -280,13 +279,13 @@ meters:
     aligned_width: 500        # width of the canonical aligned crop (pixels)
     aligned_height: 120       # height of the canonical aligned crop (pixels)
     threshold_mode: otsu      # 'otsu' or 'adaptive'
-    invert_binary: true       # invert after thresholding (true if digit is dark on light background)
+    invert_binary: true       # true if digit is dark on a light background
     crop_source_box:          # rectangle in the raw camera frame
       x: 120
       y: 80
       w: 500
       h: 120
-    max_translation_px: 4     # max drift correction (0 to disable)
+    max_translation_px: 4     # max drift correction in pixels (0 to disable)
     inner_pad_x: 2            # shrink each digit cell box inward (removes separator borders)
     inner_pad_y: 2
     digit_boxes:              # one entry per digit, left to right, relative to aligned crop
@@ -336,7 +335,7 @@ training:
 
 **Normalization images look wrong (blobs on the wrong side, noise, empty)**
 
-- Check `invert_binary`. If the digit wheel is dark text on a light background, set `invert_binary: false`. If it is light text on dark, set `true`.
+- Check `invert_binary`. After Otsu thresholding, bright pixels become foreground. If the digit wheel has dark text on a light background, set `invert_binary: true` to flip the result so the digit is the bright foreground. If it has light text on a dark background, set `invert_binary: false`.
 - Check `inner_pad_x/y`. Too much padding clips the digit; too little includes the separator border.
 - Increase `min_component_area` if noise specks are being included as digits.
 
@@ -351,10 +350,11 @@ training:
 - Add more training data, especially for the digits showing low confidence.
 - Check normalization quality — if normalized images look inconsistent, fix the config first.
 
-**Webcam index is wrong**
+**Wrong camera is being used for a meter**
 
 ```bash
-meteocr list-webcams
+meterocr list-webcams
+meterocr capture-frame --meter M1 --output /tmp/test.png
 ```
 
-On Linux the indices may shift on reboot. Use udev rules to assign fixed device paths if needed.
+Check the saved image to confirm it shows the right meter. Update `video_device` in `meters.yaml` if not. On Linux, camera indices can shift on reboot — use udev rules to assign stable device paths by USB port or serial number.

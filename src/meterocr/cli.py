@@ -254,6 +254,37 @@ def cmd_watch(
         typer.echo(f"\nStopped after {frame_count} frames.")
 
 
+@app.command("capture-frame")
+def cmd_capture_frame(
+    meter: Annotated[str, typer.Option("--meter", "-m", help="Meter ID")],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output image path")],
+    configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+    device: Annotated[Optional[str], typer.Option("--device", help="Override webcam device")] = None,
+) -> None:
+    """Capture a single frame from a meter's webcam and save it to disk.
+
+    Useful for grabbing a reference image to measure crop coordinates.
+    """
+    meter_configs = load_meter_configs(configs)
+    meter_config = get_meter_config(meter_configs, meter)
+
+    resolved_device: str | int | None = device or meter_config.video_device
+    if resolved_device is None:
+        typer.echo(
+            f"Error: no video_device configured for meter {meter} in meters.yaml "
+            "and --device was not provided.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    with WebcamCapture(resolved_device) as cap:
+        frame = cap.grab_frame()
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(output), frame)
+    typer.echo(f"Saved frame to {output}  ({frame.shape[1]}x{frame.shape[0]})")
+
+
 @app.command("list-webcams")
 def cmd_list_webcams(
     max_index: Annotated[int, typer.Option("--max-index", help="Max device index to probe")] = 10,
