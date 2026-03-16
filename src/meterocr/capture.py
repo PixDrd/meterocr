@@ -29,17 +29,21 @@ class CaptureError(RuntimeError):
 class WebcamCapture:
     """Capture frames from a USB webcam identified by device index.
 
+    Resolution defaults to 1920x1080 with MJPG encoding, which is the maximum
+    supported by most USB webcams and avoids the bandwidth limit of raw YUYV.
+    Pass explicit width/height to override.
+
     Args:
         device_index: OpenCV camera index (0, 1, 2, ...).
-        width: Desired capture width in pixels, or None to use camera default.
-        height: Desired capture height in pixels, or None to use camera default.
+        width: Desired capture width in pixels. Defaults to 1920.
+        height: Desired capture height in pixels. Defaults to 1080.
     """
 
     def __init__(
         self,
         device_index: int,
-        width: int | None = None,
-        height: int | None = None,
+        width: int = 1920,
+        height: int = 1080,
     ) -> None:
         self._device_index = device_index
         self._width = width
@@ -53,10 +57,12 @@ class WebcamCapture:
             raise CaptureError(
                 f"Cannot open webcam at device index {self._device_index}"
             )
-        if self._width is not None:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
-        if self._height is not None:
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+        # Request MJPG encoding before setting resolution; this is required for
+        # USB webcams to deliver full 1920x1080 without hitting the USB 2.0
+        # bandwidth ceiling that raw YUYV would hit at high resolutions.
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
         self._cap = cap
 
     def close(self) -> None:

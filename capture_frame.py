@@ -29,6 +29,12 @@ def main() -> int:
         print(f"Error: could not open video capture device {capture_index}.")
         return 1
 
+    # Request MJPG and 1920x1080; the camera will honour the highest resolution
+    # it supports (MJPG avoids the USB 2.0 bandwidth limit of raw YUYV).
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
     try:
         ret, frame = cap.read()
         if not ret or frame is None:
