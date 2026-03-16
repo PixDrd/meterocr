@@ -1,4 +1,4 @@
-"""Capture a single frame from an OpenCV video device and save it as a JPEG."""
+"""Capture a single frame from an OpenCV video device and save it as a PNG."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import cv2
 
 def main() -> int:
     if len(sys.argv) != 3:
-        print("Usage: python capture_frame.py <video_capture_index> <jpg_image_name>")
+        print("Usage: python capture_frame.py <video_capture_index> <png_image_name>")
         return 1
 
     try:
@@ -20,8 +20,8 @@ def main() -> int:
 
     output_name = sys.argv[2]
 
-    if not output_name.lower().endswith((".jpg", ".jpeg")):
-        print("Error: <jpg_image_name> must end with .jpg or .jpeg")
+    if not output_name.lower().endswith(".png"):
+        print("Error: <png_image_name> must end with .png")
         return 1
 
     cap = cv2.VideoCapture(capture_index)
@@ -34,21 +34,16 @@ def main() -> int:
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    # CAP_PROP_FORMAT = -1 makes retrieve() return the raw compressed bytes
-    # instead of decoding to BGR, so we get the camera's JPEG directly.
-    cap.set(cv2.CAP_PROP_FORMAT, -1)
 
     try:
-        if not cap.grab():
-            print(f"Error: could not grab a frame from device {capture_index}.")
-            return 1
-        ret, buf = cap.retrieve()
-        if not ret or buf is None:
-            print(f"Error: could not retrieve frame from device {capture_index}.")
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            print(f"Error: could not read a frame from device {capture_index}.")
             return 1
 
-        with open(output_name, "wb") as f:
-            f.write(buf.tobytes())
+        if not cv2.imwrite(output_name, frame):
+            print(f"Error: could not write PNG file '{output_name}'.")
+            return 1
     finally:
         cap.release()
 
