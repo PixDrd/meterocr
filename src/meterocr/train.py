@@ -50,29 +50,33 @@ def split_train_validation(
         (train_df, val_df) tuple.
     """
     if cfg.group_by == "frame":
-        groups = sorted(df["frame_id"].unique())
-    elif cfg.group_by == "date":
-        groups = sorted(df["timestamp"].dt.date.astype(str).unique())
+        # Stratify by meter so each meter contributes frames to both splits.
+        val_frames: set[str] = set()
+        train_frames: set[str] = set()
+        for _, meter_group in df.groupby("meter_id"):
+            meter_frames = sorted(meter_group["frame_id"].unique())
+            n_val = max(1, int(len(meter_frames) * cfg.test_size))
+            val_frames.update(meter_frames[-n_val:])
+            train_frames.update(meter_frames[:-n_val])
+        train_df = df[df["frame_id"].isin(train_frames)].reset_index(drop=True)
+        val_df = df[df["frame_id"].isin(val_frames)].reset_index(drop=True)
+        return train_df, val_df
+
+    if cfg.group_by == "date":
         df = df.copy()
         df["_group"] = df["timestamp"].dt.date.astype(str)
+        groups = sorted(df["_group"].unique())
+        group_col = "_group"
     elif cfg.group_by == "meter":
         groups = sorted(df["meter_id"].unique())
+        group_col = "meter_id"
     else:
         groups = sorted(df["frame_id"].unique())
+        group_col = "frame_id"
 
     n_val = max(1, int(len(groups) * cfg.test_size))
     val_groups = set(groups[-n_val:])
     train_groups = set(groups[:-n_val])
-
-    group_col = {
-        "frame": "frame_id",
-        "date": "_group",
-        "meter": "meter_id",
-    }.get(cfg.group_by, "frame_id")
-
-    if group_col == "_group" and "_group" not in df.columns:
-        df = df.copy()
-        df["_group"] = df["timestamp"].dt.date.astype(str)
 
     train_df = df[df[group_col].isin(train_groups)].reset_index(drop=True)
     val_df = df[df[group_col].isin(val_groups)].reset_index(drop=True)

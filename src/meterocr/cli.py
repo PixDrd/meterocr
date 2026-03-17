@@ -92,9 +92,13 @@ def cmd_train(
     samples_csv: Annotated[Path, typer.Option("--samples", help="Path to samples.csv")] = _DEFAULT_SAMPLES_CSV,
     model: Annotated[Path, typer.Option("--model", help="Output model path")] = _DEFAULT_MODEL,
     defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
+    test_size: Annotated[Optional[float], typer.Option("--test-size", help="Validation fraction (overrides defaults.yaml)")] = None,
 ) -> None:
     """Train the digit classifier from labeled samples."""
     hog_cfg, norm_cfg, training_cfg = load_default_configs(defaults)
+    if test_size is not None:
+        from dataclasses import replace
+        training_cfg = replace(training_cfg, test_size=test_size)
     df = build_training_dataframe(samples_csv)
     coverage = summarise_coverage(df)
 
@@ -136,9 +140,13 @@ def cmd_evaluate(
     model: Annotated[Path, typer.Option("--model", help="Path to model bundle")] = _DEFAULT_MODEL,
     reports: Annotated[Path, typer.Option("--reports", help="Reports output directory")] = _DEFAULT_REPORTS_DIR,
     defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
+    test_size: Annotated[Optional[float], typer.Option("--test-size", help="Validation fraction (overrides defaults.yaml)")] = None,
 ) -> None:
     """Evaluate the digit classifier on the validation split."""
     hog_cfg, norm_cfg, training_cfg = load_default_configs(defaults)
+    if test_size is not None:
+        from dataclasses import replace
+        training_cfg = replace(training_cfg, test_size=test_size)
     bundle = load_model_bundle(model)
 
     df = build_training_dataframe(samples_csv)
