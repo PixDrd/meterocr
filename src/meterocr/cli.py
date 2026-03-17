@@ -28,7 +28,7 @@ from meterocr.model_io import load_model_bundle
 from meterocr.predict import predict_meter_reading, predict_meter_reading_from_array
 from meterocr.review import append_review_item
 from meterocr.temporal import MeterState, update_meter_state
-from meterocr.train import build_training_dataframe, split_train_validation, train_and_save_model
+from meterocr.train import build_training_dataframe, split_train_validation, summarise_coverage, train_and_save_model
 from meterocr.evaluate import evaluate_digit_classifier
 from meterocr.utils import make_frame_id
 
@@ -90,6 +90,9 @@ def cmd_train(
 ) -> None:
     """Train the digit classifier from labeled samples."""
     hog_cfg, norm_cfg, training_cfg = load_default_configs(defaults)
+    df = build_training_dataframe(samples_csv)
+    coverage = summarise_coverage(df)
+
     result = train_and_save_model(
         samples_csv=samples_csv,
         model_path=model,
@@ -101,6 +104,25 @@ def cmd_train(
         f"Trained {training_cfg.model_type} on {result['train_count']} samples "
         f"({result['feature_dim']} features). Model saved to {model}"
     )
+
+    typer.echo("")
+    typer.echo("=== Training data coverage ===")
+    counts = coverage["per_digit"]
+    typer.echo("Samples per digit (0-9):")
+    typer.echo("  " + "  ".join(f"{d}:{counts[d]:>3}" for d in range(10)))
+
+    if coverage["missing"]:
+        typer.echo(f"  MISSING digits (no samples at all): {coverage['missing']}")
+    if coverage["thin"]:
+        typer.echo(f"  LOW    digits (< 5 samples):        {coverage['thin']}")
+    if not coverage["missing"] and not coverage["thin"]:
+        typer.echo("  All digits have sufficient samples.")
+
+    if len(coverage["per_meter"]) > 1:
+        typer.echo("Missing digits per meter:")
+        for meter_id, missing in sorted(coverage["missing_per_meter"].items()):
+            status = str(missing) if missing else "none"
+            typer.echo(f"  {meter_id}: {status}")
 
 
 @app.command("evaluate")

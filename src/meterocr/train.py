@@ -175,6 +175,44 @@ def train_linear_svc(
     }
 
 
+def summarise_coverage(df: pd.DataFrame, min_samples_per_digit: int = 5) -> dict[str, Any]:
+    """Summarise training data coverage and surface gaps.
+
+    Args:
+        df: Filtered training DataFrame (ok quality, valid labels).
+        min_samples_per_digit: Warn when a digit has fewer than this many samples.
+
+    Returns:
+        Dict with keys:
+          total          – total sample count
+          per_digit      – {digit: count} for digits 0-9 (0 if absent)
+          missing        – list of digits with zero samples
+          thin           – list of digits below min_samples_per_digit (but > 0)
+          per_meter      – {meter_id: {digit: count}}
+          missing_per_meter – {meter_id: [digits]}
+    """
+    all_digits = list(range(10))
+    per_digit = {d: int((df["digit_label"] == d).sum()) for d in all_digits}
+    missing = [d for d in all_digits if per_digit[d] == 0]
+    thin = [d for d in all_digits if 0 < per_digit[d] < min_samples_per_digit]
+
+    per_meter: dict[str, dict[int, int]] = {}
+    missing_per_meter: dict[str, list[int]] = {}
+    for meter_id, group in df.groupby("meter_id"):
+        counts = {d: int((group["digit_label"] == d).sum()) for d in all_digits}
+        per_meter[str(meter_id)] = counts
+        missing_per_meter[str(meter_id)] = [d for d in all_digits if counts[d] == 0]
+
+    return {
+        "total": len(df),
+        "per_digit": per_digit,
+        "missing": missing,
+        "thin": thin,
+        "per_meter": per_meter,
+        "missing_per_meter": missing_per_meter,
+    }
+
+
 def train_and_save_model(
     samples_csv: Path,
     model_path: Path,
