@@ -12,6 +12,8 @@ from typing import Annotated, Optional
 import cv2
 import typer
 
+from meterocr.align import align_meter
+from meterocr.segment import crop_digit_cell
 from meterocr.capture import (
     CaptureError,
     MeterCaptureSet,
@@ -283,6 +285,54 @@ def cmd_capture_frame(
     output.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(output), frame)
     typer.echo(f"Saved frame to {output}  ({frame.shape[1]}x{frame.shape[0]})")
+
+
+@app.command("crop-test")
+def cmd_crop_test(
+    meter: Annotated[str, typer.Option("--meter", "-m", help="Meter ID (e.g. M1)")],
+    image: Annotated[Optional[Path], typer.Option("--image", "-i", help="Input frame; omit to capture from webcam")] = None,
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output path (default: data/aligned/<meter>_crop_test.png)")] = None,
+    configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+    device: Annotated[Optional[str], typer.Option("--device", help="Override webcam device")] = None,
+) -> None:
+    """Crop and perspective-correct a frame and save the result for inspection.
+
+    Pass an existing image with --image, or omit it to capture a fresh frame
+    from the meter's configured webcam.
+    """
+    meter_configs = load_meter_configs(configs)
+    meter_config = get_meter_config(meter_configs, meter)
+
+    if image is not None:
+        frame = cv2.imread(str(image))
+        if frame is None:
+            typer.echo(f"Error: could not read image {image}", err=True)
+            raise typer.Exit(1)
+    else:
+        resolved_device: str | int | None = device or meter_config.video_device
+        if resolved_device is None:
+            typer.echo(
+                f"Error: no video_device configured for meter {meter} in meters.yaml "
+                "and --device was not provided.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        with WebcamCapture(resolved_device) as cap:
+            frame = cap.grab_frame()
+
+    aligned = align_meter(frame, meter_config)
+
+    out_path = output or Path("data/aligned") / f"{meter}_crop_test.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(out_path), aligned)
+    typer.echo(f"Saved aligned crop to {out_path}  ({aligned.shape[1]}x{aligned.shape[0]})")
+
+    stem = out_path.stem
+    for i, box in enumerate(meter_config.digit_boxes, start=1):
+        cell = crop_digit_cell(aligned, box.x, box.y, box.w, box.h)
+        cell_path = out_path.with_name(f"{stem}_{i}{out_path.suffix}")
+        cv2.imwrite(str(cell_path), cell)
+        typer.echo(f"  digit {i}: {cell_path}  ({cell.shape[1]}x{cell.shape[0]})")
 
 
 @app.command("list-webcams")

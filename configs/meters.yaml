@@ -1,51 +1,62 @@
 meters:
   - meter_id: M1
-    video_device: /dev/video0
+    video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_63928130-video-index0
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    crop_source_box: { x: 120, y: 80, w: 500, h: 120 }
-    max_translation_px: 4
+    perspective_src_points:   # mutually exclusive with crop_source_box
+      - [927, 674]             # top-left
+      - [1172, 672]             # top-right
+      - [1173, 713]            # bottom-right
+      - [925, 716]            # bottom-left    max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
     digit_boxes:
-      - { x: 0,   y: 0, w: 92, h: 120 }
-      - { x: 96,  y: 0, w: 92, h: 120 }
-      - { x: 192, y: 0, w: 92, h: 120 }
-      - { x: 288, y: 0, w: 92, h: 120 }
-      - { x: 384, y: 0, w: 92, h: 120 }
+      - { x: 0,   y: 0, w: 60, h: 120 }
+      - { x: 106,  y: 0, w: 60, h: 120 }
+      - { x: 212, y: 0, w: 60, h: 120 }
+      - { x: 322, y: 0, w: 60, h: 120 }
+      - { x: 434, y: 0, w: 60, h: 120 }
 
   - meter_id: M2
-    video_device: /dev/video2
+    video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_7AAA8130-video-index0
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    crop_source_box: { x: 140, y: 90, w: 500, h: 120 }
+    perspective_src_points:   # mutually exclusive with crop_source_box
+      - [767, 599]             # top-left
+      - [1002, 587]             # top-right
+      - [1003, 627]            # bottom-right
+      - [765, 640]            # bottom-left    max_translation_px: 4
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
     digit_boxes:
-      - { x: 0,   y: 0, w: 92, h: 120 }
-      - { x: 96,  y: 0, w: 92, h: 120 }
-      - { x: 192, y: 0, w: 92, h: 120 }
-      - { x: 288, y: 0, w: 92, h: 120 }
-      - { x: 384, y: 0, w: 92, h: 120 }
+      - { x: 0,   y: 0, w: 60, h: 120 }
+      - { x: 106,  y: 0, w: 60, h: 120 }
+      - { x: 212, y: 0, w: 60, h: 120 }
+      - { x: 322, y: 0, w: 60, h: 120 }
+      - { x: 434, y: 0, w: 60, h: 120 }
 
   - meter_id: M3
-    video_device: /dev/video4
+    video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_7FDE8130-video-index0
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    crop_source_box: { x: 160, y: 100, w: 500, h: 120 }
+    perspective_src_points:   # mutually exclusive with crop_source_box
+      - [713, 429]             # top-left
+      - [944, 422]             # top-right
+      - [944, 461]            # bottom-right
+      - [712, 467]            # bottom-left    max_translation_px: 4
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
     digit_boxes:
-      - { x: 0,   y: 0, w: 92, h: 120 }
-      - { x: 96,  y: 0, w: 92, h: 120 }
-      - { x: 192, y: 0, w: 92, h: 120 }
-      - { x: 288, y: 0, w: 92, h: 120 }
-      - { x: 384, y: 0, w: 92, h: 120 }
+      - { x: 0,   y: 0, w: 60, h: 120 }
+      - { x: 106,  y: 0, w: 60, h: 120 }
+      - { x: 212, y: 0, w: 60, h: 120 }
+      - { x: 322, y: 0, w: 60, h: 120 }
+      - { x: 434, y: 0, w: 60, h: 120 }
