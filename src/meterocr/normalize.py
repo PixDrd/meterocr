@@ -52,14 +52,6 @@ def normalize_digit(
 
     normalized = center_and_resize(digit_crop, (cfg.output_width, cfg.output_height))
 
-    if cfg.foreground == "white":
-        # Ensure foreground pixels are bright
-        if int(normalized.mean()) < 128 and normalized.max() > 0:
-            normalized = cv2.bitwise_not(normalized)
-    else:
-        if int(normalized.mean()) > 128:
-            normalized = cv2.bitwise_not(normalized)
-
     return NormalizationResult(
         normalized=normalized,
         gray=gray,
