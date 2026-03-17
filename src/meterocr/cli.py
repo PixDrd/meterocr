@@ -12,8 +12,11 @@ from typing import Annotated, Optional
 import cv2
 import typer
 
+import re
+
 from meterocr.align import align_meter
-from meterocr.segment import crop_digit_cell
+from meterocr.segment import crop_digit_cell, extract_digit_cells
+from meterocr.normalize import normalize_digit
 from meterocr.capture import (
     CaptureError,
     MeterCaptureSet,
@@ -22,7 +25,9 @@ from meterocr.capture import (
     build_capture_set,
     list_available_webcams,
 )
+from meterocr import dataset as _dataset
 from meterocr.labeling import label_frame
+from meterocr.types import DigitSample, FrameMeta
 from meterocr.meter_config import get_meter_config, load_default_configs, load_meter_configs
 from meterocr.model_io import load_model_bundle
 from meterocr.predict import predict_meter_reading, predict_meter_reading_from_array
@@ -192,6 +197,7 @@ def cmd_watch(
     review_csv: Annotated[Path, typer.Option("--review-csv", help="Review queue CSV")] = _DEFAULT_REVIEW_CSV,
     save_uncertain: Annotated[bool, typer.Option("--save-uncertain", help="Save uncertain frame images")] = True,
     uncertain_dir: Annotated[Path, typer.Option("--uncertain-dir", help="Directory for uncertain frames")] = Path("data/raw/uncertain"),
+    unknown_digits_dir: Annotated[Path, typer.Option("--unknown-digits-dir", help="Directory to save unreadable digit crops")] = Path("data/unknown_digits"),
     loop: Annotated[bool, typer.Option("--loop", help="Loop test images indefinitely")] = False,
 ) -> None:
     """Watch a meter and emit periodic stable readings.
@@ -225,8 +231,11 @@ def cmd_watch(
     state = MeterState(meter_id=meter)
     predictions_csv.parent.mkdir(parents=True, exist_ok=True)
     uncertain_dir.mkdir(parents=True, exist_ok=True)
+    unknown_digits_dir.mkdir(parents=True, exist_ok=True)
 
     _ensure_predictions_csv(predictions_csv)
+
+    unknown_seq = _next_unknown_seq(unknown_digits_dir, meter)
 
     typer.echo(f"Watching meter {meter}. Press Ctrl+C to stop.")
     frame_count = 0
@@ -267,6 +276,23 @@ def cmd_watch(
                     uncertain_path = uncertain_dir / f"{frame_id}.png"
                     cv2.imwrite(str(uncertain_path), frame_bgr)
                     append_review_item(review_csv, prediction, stable, uncertain_path)
+
+                # Save individual digit crops for any digit below the confidence threshold
+                low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
+                if low_conf_digits:
+                    aligned = align_meter(frame_bgr, meter_config)
+                    frame_meta = FrameMeta(
+                        frame_id=frame_id,
+                        meter_id=meter,
+                        timestamp=ts,
+                        source_path=Path(frame_id),
+                    )
+                    cells = extract_digit_cells(aligned, meter_config, frame_meta)
+                    for dp in low_conf_digits:
+                        cell_img = cells[dp.position].image_bgr
+                        fname = f"{meter}_{unknown_seq:04d}_pos{dp.position}_unknown.png"
+                        cv2.imwrite(str(unknown_digits_dir / fname), cell_img)
+                        unknown_seq += 1
 
                 if not offline or loop:
                     time.sleep(interval)
@@ -367,6 +393,84 @@ def cmd_list_webcams(
         typer.echo("No webcams found.")
     else:
         typer.echo(f"Available webcam indices: {indices}")
+
+
+@app.command("import-unknown")
+def cmd_import_unknown(
+    unknown_dir: Annotated[Path, typer.Argument(help="Directory containing renamed digit crops")],
+    configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+    defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
+    samples_csv: Annotated[Path, typer.Option("--samples", help="Path to samples.csv")] = _DEFAULT_SAMPLES_CSV,
+    normalized_dir: Annotated[Path, typer.Option(help="Directory to save normalized images")] = _DEFAULT_NORMALIZED_DIR,
+) -> None:
+    """Import renamed unknown digit crops into the training dataset.
+
+    Rename files from M1_0001_pos2_unknown.png to M1_0001_pos2_7.png,
+    then run this command to normalize and add them to samples.csv.
+    """
+    meter_configs = load_meter_configs(configs)
+    _, norm_cfg, _ = load_default_configs(defaults)
+
+    pattern = re.compile(r"^([^_]+)_(\d+)_pos(\d+)_([0-9])\.png$", re.IGNORECASE)
+    files = sorted(unknown_dir.glob("*.png"))
+    imported = 0
+    skipped = 0
+
+    for f in files:
+        m = pattern.match(f.name)
+        if not m:
+            skipped += 1
+            continue
+
+        meter_id, seq, position, digit_char = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+
+        try:
+            meter_config = get_meter_config(meter_configs, meter_id)
+        except Exception:
+            typer.echo(f"  SKIP {f.name}: unknown meter '{meter_id}'")
+            skipped += 1
+            continue
+
+        cell_bgr = cv2.imread(str(f))
+        if cell_bgr is None:
+            typer.echo(f"  SKIP {f.name}: could not read image")
+            skipped += 1
+            continue
+
+        norm_result = normalize_digit(cell_bgr, meter_config.threshold_mode, meter_config.invert_binary, norm_cfg)
+
+        normalized_dir.mkdir(parents=True, exist_ok=True)
+        norm_stem = f"{meter_id}_{seq:04d}_pos{position}_imported"
+        norm_path = normalized_dir / f"{norm_stem}_norm.png"
+        cv2.imwrite(str(norm_path), norm_result.normalized)
+
+        sample = DigitSample(
+            frame_id=f"imported_{meter_id}_{seq:04d}",
+            meter_id=meter_id,
+            timestamp=datetime.now(),
+            position=position,
+            digit_label=digit_char,
+            full_reading="",
+            raw_cell_path=f,
+            normalized_path=norm_path,
+            quality="ok" if norm_result.success else "uncertain",
+        )
+        _dataset.append_digit_samples(samples_csv, [sample])
+        typer.echo(f"  {f.name}  →  digit={digit_char}  pos={position}  quality={sample.quality}")
+        imported += 1
+
+    typer.echo(f"\nImported {imported} samples, skipped {skipped} files.")
+
+
+def _next_unknown_seq(directory: Path, meter_id: str) -> int:
+    """Return the next sequence number for unknown digit crops in directory."""
+    pattern = re.compile(rf"^{re.escape(meter_id)}_(\d+)_pos\d+_(unknown|\d)\.png$", re.IGNORECASE)
+    max_seq = 0
+    for f in directory.glob(f"{meter_id}_*.png"):
+        m = pattern.match(f.name)
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    return max_seq + 1
 
 
 def _ensure_predictions_csv(path: Path) -> None:
