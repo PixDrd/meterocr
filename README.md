@@ -92,8 +92,9 @@ Edit `configs/meters.yaml` to match your actual camera positions.
 For each meter you need:
 
 - `video_device` — the webcam device path for this meter (e.g. `/dev/video0`)
-- `crop_source_box` — the rectangle in the raw camera frame that contains the meter display (`x, y, w, h` in pixels)
+- `crop_source_box` — the rectangle in the raw camera frame that contains the meter display (`x, y, w, h` in pixels); use this when the camera is roughly perpendicular to the meter face
 - `aligned_width` / `aligned_height` — the canonical size you want to work with
+- `perspective_src_points` — use instead of `crop_source_box` when the camera is angled; specify the four corners of the meter face in the raw frame (see Configuration reference)
 - `digit_boxes` — one box per digit wheel, in left-to-right order, relative to the aligned crop
 
 Start by identifying which device belongs to which meter:
@@ -298,7 +299,21 @@ meters:
 
 `video_device` should be the full device path (e.g. `/dev/video0`, `/dev/video2`). This keeps the meter-to-camera assignment stable across reboots when combined with udev rules. You can override it at runtime with `--device`.
 
-For perspective-distorted meters, replace `crop_source_box` with `perspective_src_points` (four corner points of the meter face in the raw frame, top-left → top-right → bottom-right → bottom-left).
+If the camera is mounted at an angle to the meter face, use `perspective_src_points` instead of `crop_source_box`. Provide the four corners of the meter display in the raw frame — the code applies a perspective warp to straighten them into the canonical rectangle.
+
+Point order: **top-left → top-right → bottom-right → bottom-left**, measured in the raw 1920×1080 frame.
+
+```yaml
+    perspective_src_points:   # mutually exclusive with crop_source_box
+      - [142, 95]             # top-left
+      - [638, 82]             # top-right
+      - [644, 205]            # bottom-right
+      - [136, 218]            # bottom-left
+```
+
+Measure the coordinates by opening a reference frame (captured with `capture-frame`) in an image viewer that shows pixel coordinates (e.g. GIMP → pointer tool, macOS Preview → Tools → Inspector). Click each corner of the meter face and note the `x, y` values. The four points do not need to form a perfect rectangle — any quadrilateral works.
+
+`crop_source_box` and `perspective_src_points` are mutually exclusive; set only one per meter.
 
 ### `configs/defaults.yaml`
 
