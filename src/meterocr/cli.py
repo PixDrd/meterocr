@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import csv
+import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -191,13 +193,13 @@ def cmd_predict(
 
 @app.command("watch")
 def cmd_watch(
-    meter: Annotated[str, typer.Option("--meter", "-m", help="Meter ID")],
+    meter: Annotated[Optional[str], typer.Option("--meter", "-m", help="Meter ID (omit to watch all configured meters)")] = None,
     model: Annotated[Path, typer.Option("--model", help="Path to model bundle")] = _DEFAULT_MODEL,
     configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
     defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
     device: Annotated[Optional[str], typer.Option("--device", help="Override webcam device (e.g. /dev/video0); uses meters.yaml value by default")] = None,
     offline: Annotated[bool, typer.Option("--offline", help="Use test images instead of webcam")] = False,
-    test_images: Annotated[Optional[Path], typer.Option("--test-images", help="Directory with test images for this meter")] = None,
+    test_images: Annotated[Optional[Path], typer.Option("--test-images", help="Directory with test images (single-meter mode only)")] = None,
     interval: Annotated[float, typer.Option("--interval", help="Seconds between captures")] = 60.0,
     min_confidence: Annotated[float, typer.Option("--min-confidence", help="Confidence threshold")] = 0.5,
     max_delta_hour: Annotated[Optional[float], typer.Option("--max-delta-hour", help="Max plausible increment per hour")] = None,
@@ -207,23 +209,219 @@ def cmd_watch(
     uncertain_dir: Annotated[Path, typer.Option("--uncertain-dir", help="Directory for uncertain frames")] = Path("data/raw/uncertain"),
     unknown_digits_dir: Annotated[Path, typer.Option("--unknown-digits-dir", help="Directory to save unreadable digit crops")] = Path("data/unknown_digits"),
     loop: Annotated[bool, typer.Option("--loop", help="Loop test images indefinitely")] = False,
+    pre_read_cmd: Annotated[Optional[str], typer.Option("--pre-read-cmd", help="Shell command to run before each capture cycle (e.g. turn on a light)")] = None,
+    post_read_cmd: Annotated[Optional[str], typer.Option("--post-read-cmd", help="Shell command to run after each capture cycle (e.g. turn off a light)")] = None,
+    warmup_secs: Annotated[float, typer.Option("--warmup-secs", help="Seconds to wait after pre-read-cmd before capturing (only when --pre-read-cmd is set)")] = 2.0,
 ) -> None:
-    """Watch a meter and emit periodic stable readings.
+    """Watch one or all meters and emit periodic stable readings.
 
+    Omit --meter to watch all meters defined in meters.yaml concurrently.
     The webcam device is read from meters.yaml (video_device field).
-    Use --device to override it on the command line.
+    Use --device to override it (single-meter mode only).
     Use --offline with --test-images for offline testing.
+    Use --pre-read-cmd / --post-read-cmd to control a light around each cycle.
     """
     meter_configs = load_meter_configs(configs)
-    _, norm_cfg, _ = load_default_configs(defaults)
-    meter_config = get_meter_config(meter_configs, meter)
     bundle = load_model_bundle(model)
 
-    # Resolve capture source: CLI flag > meters.yaml > offline fallback
+    meters_to_watch = (
+        [get_meter_config(meter_configs, meter)]
+        if meter is not None
+        else list(meter_configs.values())
+    )
+
+    predictions_csv.parent.mkdir(parents=True, exist_ok=True)
+    uncertain_dir.mkdir(parents=True, exist_ok=True)
+    unknown_digits_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_predictions_csv(predictions_csv)
+
+    if len(meters_to_watch) == 1:
+        _run_watch_loop(
+            meter_config=meters_to_watch[0],
+            bundle=bundle,
+            device=device,
+            offline=offline,
+            test_images_dir=test_images,
+            interval=interval,
+            min_confidence=min_confidence,
+            max_delta_hour=max_delta_hour,
+            predictions_csv=predictions_csv,
+            review_csv=review_csv,
+            save_uncertain=save_uncertain,
+            uncertain_dir=uncertain_dir,
+            unknown_digits_dir=unknown_digits_dir,
+            loop=loop,
+            pre_read_cmd=pre_read_cmd,
+            post_read_cmd=post_read_cmd,
+            warmup_secs=warmup_secs,
+        )
+    else:
+        n = len(meters_to_watch)
+        capture_barrier = threading.Barrier(n + 1)
+        done_barrier = threading.Barrier(n + 1)
+        error_event = threading.Event()
+
+        threads = [
+            threading.Thread(
+                target=_worker_loop,
+                kwargs=dict(
+                    meter_config=mc,
+                    bundle=bundle,
+                    offline=offline,
+                    min_confidence=min_confidence,
+                    max_delta_hour=max_delta_hour,
+                    predictions_csv=predictions_csv,
+                    review_csv=review_csv,
+                    save_uncertain=save_uncertain,
+                    uncertain_dir=uncertain_dir,
+                    unknown_digits_dir=unknown_digits_dir,
+                    loop=loop,
+                    capture_barrier=capture_barrier,
+                    done_barrier=done_barrier,
+                    error_event=error_event,
+                ),
+                daemon=True,
+            )
+            for mc in meters_to_watch
+        ]
+        for t in threads:
+            t.start()
+
+        try:
+            while True:
+                if not offline or loop:
+                    time.sleep(interval)
+
+                if error_event.is_set():
+                    capture_barrier.abort()
+                    break
+
+                if pre_read_cmd:
+                    _run_cmd(pre_read_cmd)
+                    time.sleep(warmup_secs)
+
+                capture_barrier.wait()   # release all workers to capture simultaneously
+                done_barrier.wait()      # wait for all workers to finish
+
+                if post_read_cmd:
+                    _run_cmd(post_read_cmd)
+
+                if error_event.is_set():
+                    break
+
+                if offline and not loop:
+                    break
+
+        except KeyboardInterrupt:
+            typer.echo("\nStopped.")
+            capture_barrier.abort()
+            done_barrier.abort()
+
+        for t in threads:
+            t.join(timeout=5.0)
+
+
+def _run_cmd(cmd: str) -> None:
+    """Run a shell command; log a warning on failure but never raise."""
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        typer.echo(f"[warn] pre/post command failed (exit {e.returncode}): {cmd}", err=True)
+
+
+def _do_one_cycle(
+    meter_id,
+    capture,
+    meter_config,
+    bundle,
+    state,
+    unknown_seq,
+    min_confidence,
+    max_delta_hour,
+    predictions_csv,
+    review_csv,
+    save_uncertain,
+    uncertain_dir,
+    unknown_digits_dir,
+    offline,
+) -> int:
+    """Grab one frame, predict, update state, write CSV. Returns new unknown_seq.
+
+    Raises CaptureError if the capture source is exhausted or fails.
+    """
+    frame_bgr = capture.grab_frame()  # raises CaptureError on failure
+
+    ts = datetime.now()
+    frame_id = make_frame_id(meter_id, ts)
+
+    prediction = predict_meter_reading_from_array(
+        frame_bgr, frame_id, ts, meter_config, bundle
+    )
+    stable = update_meter_state(
+        state,
+        prediction,
+        min_confidence_threshold=min_confidence,
+        max_delta_per_hour=max_delta_hour,
+    )
+
+    status = "ACCEPTED" if stable.accepted else "HELD"
+    typer.echo(
+        f"[{ts.strftime('%H:%M:%S')}] {meter_id}  raw={prediction.raw_reading}"
+        f"  stable={stable.stable_reading}  [{status}]"
+        f"  conf_min={prediction.min_confidence:.3f}"
+    )
+
+    _append_prediction_row(predictions_csv, prediction, stable)
+
+    if not stable.accepted and save_uncertain:
+        uncertain_path = uncertain_dir / f"{frame_id}.png"
+        cv2.imwrite(str(uncertain_path), frame_bgr)
+        append_review_item(review_csv, prediction, stable, uncertain_path)
+
+    low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
+    if low_conf_digits:
+        aligned = align_meter(frame_bgr, meter_config)
+        frame_meta = FrameMeta(
+            frame_id=frame_id,
+            meter_id=meter_id,
+            timestamp=ts,
+            source_path=Path(frame_id),
+        )
+        cells = extract_digit_cells(aligned, meter_config, frame_meta)
+        for dp in low_conf_digits:
+            cell_img = cells[dp.position].image_bgr
+            fname = f"{meter_id}_{unknown_seq:04d}_pos{dp.position}_unknown.png"
+            cv2.imwrite(str(unknown_digits_dir / fname), cell_img)
+            unknown_seq += 1
+
+    return unknown_seq
+
+
+def _run_watch_loop(
+    meter_config,
+    bundle,
+    device,
+    offline,
+    test_images_dir,
+    interval,
+    min_confidence,
+    max_delta_hour,
+    predictions_csv,
+    review_csv,
+    save_uncertain,
+    uncertain_dir,
+    unknown_digits_dir,
+    loop,
+    pre_read_cmd=None,
+    post_read_cmd=None,
+    warmup_secs=2.0,
+) -> None:
+    meter = meter_config.meter_id
+
     if offline:
-        img_dir = test_images or (_DEFAULT_TEST_IMAGES_ROOT / meter)
+        img_dir = test_images_dir or (_DEFAULT_TEST_IMAGES_ROOT / meter)
         capture = TestImageCapture(img_dir, loop=loop)
-        typer.echo(f"Offline mode: reading test images from {img_dir}")
+        typer.echo(f"[{meter}] Offline mode: reading test images from {img_dir}")
     else:
         resolved_device: str | int | None = device or meter_config.video_device
         if resolved_device is None:
@@ -232,17 +430,11 @@ def cmd_watch(
                 "and --device was not provided. Use --offline for test images.",
                 err=True,
             )
-            raise typer.Exit(1)
+            return
         capture = WebcamCapture(resolved_device)
-        typer.echo(f"Live mode: webcam device '{resolved_device}'")
+        typer.echo(f"[{meter}] Live mode: webcam device '{resolved_device}'")
 
     state = MeterState(meter_id=meter)
-    predictions_csv.parent.mkdir(parents=True, exist_ok=True)
-    uncertain_dir.mkdir(parents=True, exist_ok=True)
-    unknown_digits_dir.mkdir(parents=True, exist_ok=True)
-
-    _ensure_predictions_csv(predictions_csv)
-
     unknown_seq = _next_unknown_seq(unknown_digits_dir, meter)
 
     typer.echo(f"Watching meter {meter}. Press Ctrl+C to stop.")
@@ -251,65 +443,141 @@ def cmd_watch(
     try:
         with capture:
             while True:
-                try:
-                    frame_bgr = capture.grab_frame()
-                except CaptureError as e:
-                    typer.echo(f"Capture stopped: {e}")
-                    break
-
-                frame_count += 1
-                ts = datetime.now()
-                frame_id = make_frame_id(meter, ts)
-
-                prediction = predict_meter_reading_from_array(
-                    frame_bgr, frame_id, ts, meter_config, bundle
-                )
-                stable = update_meter_state(
-                    state,
-                    prediction,
-                    min_confidence_threshold=min_confidence,
-                    max_delta_per_hour=max_delta_hour,
-                )
-
-                status = "ACCEPTED" if stable.accepted else "HELD"
-                typer.echo(
-                    f"[{ts.strftime('%H:%M:%S')}] {meter}  raw={prediction.raw_reading}"
-                    f"  stable={stable.stable_reading}  [{status}]"
-                    f"  conf_min={prediction.min_confidence:.3f}"
-                )
-
-                _append_prediction_row(predictions_csv, prediction, stable)
-
-                if not stable.accepted and save_uncertain:
-                    uncertain_path = uncertain_dir / f"{frame_id}.png"
-                    cv2.imwrite(str(uncertain_path), frame_bgr)
-                    append_review_item(review_csv, prediction, stable, uncertain_path)
-
-                # Save individual digit crops for any digit below the confidence threshold
-                low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
-                if low_conf_digits:
-                    aligned = align_meter(frame_bgr, meter_config)
-                    frame_meta = FrameMeta(
-                        frame_id=frame_id,
-                        meter_id=meter,
-                        timestamp=ts,
-                        source_path=Path(frame_id),
-                    )
-                    cells = extract_digit_cells(aligned, meter_config, frame_meta)
-                    for dp in low_conf_digits:
-                        cell_img = cells[dp.position].image_bgr
-                        fname = f"{meter}_{unknown_seq:04d}_pos{dp.position}_unknown.png"
-                        cv2.imwrite(str(unknown_digits_dir / fname), cell_img)
-                        unknown_seq += 1
-
                 if not offline or loop:
                     time.sleep(interval)
-                else:
-                    # Offline non-looping: no sleep, consume all images quickly
-                    pass
+
+                if pre_read_cmd:
+                    _run_cmd(pre_read_cmd)
+                    time.sleep(warmup_secs)
+
+                try:
+                    unknown_seq = _do_one_cycle(
+                        meter_id=meter,
+                        capture=capture,
+                        meter_config=meter_config,
+                        bundle=bundle,
+                        state=state,
+                        unknown_seq=unknown_seq,
+                        min_confidence=min_confidence,
+                        max_delta_hour=max_delta_hour,
+                        predictions_csv=predictions_csv,
+                        review_csv=review_csv,
+                        save_uncertain=save_uncertain,
+                        uncertain_dir=uncertain_dir,
+                        unknown_digits_dir=unknown_digits_dir,
+                        offline=offline,
+                    )
+                    frame_count += 1
+                except CaptureError as e:
+                    typer.echo(f"[{meter}] Capture stopped: {e}")
+                    break
+
+                if post_read_cmd:
+                    _run_cmd(post_read_cmd)
+
+                if offline and not loop:
+                    break
 
     except KeyboardInterrupt:
-        typer.echo(f"\nStopped after {frame_count} frames.")
+        typer.echo(f"\n[{meter}] Stopped after {frame_count} frames.")
+
+
+def _worker_loop(
+    meter_config,
+    bundle,
+    offline,
+    min_confidence,
+    max_delta_hour,
+    predictions_csv,
+    review_csv,
+    save_uncertain,
+    uncertain_dir,
+    unknown_digits_dir,
+    loop,
+    capture_barrier,
+    done_barrier,
+    error_event,
+) -> None:
+    """Worker thread for multi-meter mode. Captures when released by the coordinator."""
+    meter = meter_config.meter_id
+
+    if offline:
+        img_dir = _DEFAULT_TEST_IMAGES_ROOT / meter
+        capture = TestImageCapture(img_dir, loop=loop)
+        typer.echo(f"[{meter}] Offline mode: reading test images from {img_dir}")
+    else:
+        resolved_device = meter_config.video_device
+        if resolved_device is None:
+            typer.echo(
+                f"Error: no video_device configured for meter {meter} in meters.yaml.",
+                err=True,
+            )
+            error_event.set()
+            try:
+                done_barrier.abort()
+            except Exception:
+                pass
+            return
+        capture = WebcamCapture(resolved_device)
+        typer.echo(f"[{meter}] Live mode: webcam device '{resolved_device}'")
+
+    state = MeterState(meter_id=meter)
+    unknown_seq = _next_unknown_seq(unknown_digits_dir, meter)
+
+    try:
+        with capture:
+            while True:
+                try:
+                    capture_barrier.wait()
+                except threading.BrokenBarrierError:
+                    return  # shutdown signal
+
+                try:
+                    unknown_seq = _do_one_cycle(
+                        meter_id=meter,
+                        capture=capture,
+                        meter_config=meter_config,
+                        bundle=bundle,
+                        state=state,
+                        unknown_seq=unknown_seq,
+                        min_confidence=min_confidence,
+                        max_delta_hour=max_delta_hour,
+                        predictions_csv=predictions_csv,
+                        review_csv=review_csv,
+                        save_uncertain=save_uncertain,
+                        uncertain_dir=uncertain_dir,
+                        unknown_digits_dir=unknown_digits_dir,
+                        offline=offline,
+                    )
+                except CaptureError as e:
+                    typer.echo(f"[{meter}] Capture stopped: {e}")
+                    error_event.set()
+                    try:
+                        done_barrier.abort()
+                    except Exception:
+                        pass
+                    return
+                except Exception as e:
+                    typer.echo(f"[{meter}] Unexpected error: {e}", err=True)
+                    error_event.set()
+                    try:
+                        done_barrier.abort()
+                    except Exception:
+                        pass
+                    return
+
+                try:
+                    done_barrier.wait()
+                except threading.BrokenBarrierError:
+                    return  # shutdown signal
+
+    except Exception as e:
+        typer.echo(f"[{meter}] Fatal error: {e}", err=True)
+        error_event.set()
+        try:
+            done_barrier.abort()
+        except Exception:
+            pass
 
 
 @app.command("capture-frame")
@@ -481,6 +749,9 @@ def _next_unknown_seq(directory: Path, meter_id: str) -> int:
     return max_seq + 1
 
 
+_csv_lock = threading.Lock()
+
+
 def _ensure_predictions_csv(path: Path) -> None:
     if not path.exists():
         with path.open("w", newline="") as f:
@@ -493,7 +764,7 @@ def _ensure_predictions_csv(path: Path) -> None:
 
 
 def _append_prediction_row(path: Path, prediction, stable) -> None:
-    with path.open("a", newline="") as f:
+    with _csv_lock, path.open("a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=[
             "frame_id", "timestamp", "meter_id", "raw_reading",
             "stable_reading", "accepted", "reason",
