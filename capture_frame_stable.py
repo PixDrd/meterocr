@@ -159,8 +159,21 @@ def main() -> int:
             return 1
         return focus_test(device, focus_start, focus_end)
 
+    focus: int | None = None
+    if "--focus" in args:
+        idx = args.index("--focus")
+        if idx + 1 >= len(args):
+            print("Error: --focus requires a value")
+            return 1
+        try:
+            focus = int(args[idx + 1])
+        except ValueError:
+            print("Error: --focus value must be an integer")
+            return 1
+        args = args[:idx] + args[idx + 2:]
+
     if len(args) != 2:
-        print("Usage: python capture_frame_stable.py <video_device> <image_output>")
+        print("Usage: python capture_frame_stable.py <video_device> <image_output> [--focus <value>]")
         print("       python capture_frame_stable.py <video_device> --focus-test <start> <end>")
         print("Tip: use /dev/v4l/by-id/... instead of numeric indices like 0, 2, 4.")
         return 1
@@ -176,7 +189,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        frame = capture_with_retries(device)
+        frame = capture_with_retries(device, focus=focus)
     except Exception as exc:
         print(f"Error: {exc}")
         return 1
