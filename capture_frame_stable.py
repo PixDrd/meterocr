@@ -55,6 +55,10 @@ def describe_device(device: str | int) -> str:
 
 
 def open_capture(device: str | int, focus: int | None = None) -> cv2.VideoCapture:
+    # V4L2 backend cannot open cameras by symlink path; resolve to the real
+    # device node (e.g. /dev/v4l/by-id/... -> /dev/video0) before opening.
+    if isinstance(device, str):
+        device = str(Path(device).resolve())
     cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
     if not cap.isOpened():
         cap.release()
