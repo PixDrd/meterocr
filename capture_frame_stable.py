@@ -2,11 +2,15 @@
 
 Usage:
     python capture_frame_stable.py <video_device> <image_output>
+    python capture_frame_stable.py <video_device> --focus-test <start> <end>
 
 Examples:
-    python capture_frame_stable.py /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_12345-video-index0 out.jpg
     python capture_frame_stable.py /dev/video0 out.png
-    python capture_frame_stable.py 0 out.jpg
+    python capture_frame_stable.py /dev/video0 --focus-test 0 255
+
+Focus test mode:
+    Disables autofocus and captures one image per focus value from <start> to
+    <end> in steps of 5, saving each to focustest/f<value>.png.
 
 Notes:
 - Prefer /dev/v4l/by-id/... instead of numeric indices. Those paths are much more stable.
@@ -50,7 +54,7 @@ def describe_device(device: str | int) -> str:
     return str(device)
 
 
-def open_capture(device: str | int) -> cv2.VideoCapture:
+def open_capture(device: str | int, focus: int | None = None) -> cv2.VideoCapture:
     cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
     if not cap.isOpened():
         cap.release()
@@ -60,6 +64,9 @@ def open_capture(device: str | int) -> cv2.VideoCapture:
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*REQUESTED_FOURCC))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, REQUESTED_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, REQUESTED_HEIGHT)
+    if focus is not None:
+        cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+        cap.set(cv2.CAP_PROP_FOCUS, focus)
     return cap
 
 
@@ -69,13 +76,13 @@ def read_frame(cap: cv2.VideoCapture) -> tuple[bool, object]:
     return cap.read()
 
 
-def capture_with_retries(device: str | int):
+def capture_with_retries(device: str | int, focus: int | None = None):
     last_error: str | None = None
 
     for open_attempt in range(1, OPEN_RETRIES + 1):
         cap: cv2.VideoCapture | None = None
         try:
-            cap = open_capture(device)
+            cap = open_capture(device, focus=focus)
 
             for read_attempt in range(1, READ_RETRIES + 1):
                 ok, frame = read_frame(cap)
@@ -104,16 +111,60 @@ def capture_with_retries(device: str | int):
     raise RuntimeError(last_error or f"failed to capture from {describe_device(device)}")
 
 
+def focus_test(device: str | int, focus_start: int, focus_end: int) -> int:
+    out_dir = Path("focustest")
+    out_dir.mkdir(exist_ok=True)
+
+    step = 5 if focus_end >= focus_start else -5
+    values = range(focus_start, focus_end + step, step)
+
+    print(f"Focus test: {focus_start} → {focus_end}, step 5 — saving to {out_dir}/")
+    errors = 0
+    for focus in values:
+        print(f"  focus={focus} ... ", end="", flush=True)
+        try:
+            frame = capture_with_retries(device, focus=focus)
+        except Exception as exc:
+            print(f"FAILED ({exc})")
+            errors += 1
+            continue
+
+        out_path = out_dir / f"f{focus}.png"
+        if not cv2.imwrite(str(out_path), frame):
+            print(f"FAILED (could not write {out_path})")
+            errors += 1
+            continue
+
+        print(f"saved {out_path}")
+
+    total = len(list(values))
+    print(f"\nDone: {total - errors}/{total} images saved to {out_dir}/")
+    return 0 if errors == 0 else 1
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
+    args = sys.argv[1:]
+
+    if len(args) == 4 and args[1] == "--focus-test":
+        device = parse_device_arg(args[0])
+        try:
+            focus_start = int(args[2])
+            focus_end = int(args[3])
+        except ValueError:
+            print("Error: focus start and end must be integers")
+            return 1
+        return focus_test(device, focus_start, focus_end)
+
+    if len(args) != 2:
         print("Usage: python capture_frame_stable.py <video_device> <image_output>")
+        print("       python capture_frame_stable.py <video_device> --focus-test <start> <end>")
         print("Tip: use /dev/v4l/by-id/... instead of numeric indices like 0, 2, 4.")
         return 1
 
-    device = parse_device_arg(sys.argv[1])
+    device = parse_device_arg(args[0])
 
     try:
-        output_path = validate_output_path(sys.argv[2])
+        output_path = validate_output_path(args[1])
     except ValueError as exc:
         print(f"Error: {exc}")
         return 1
