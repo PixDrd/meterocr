@@ -40,7 +40,7 @@ while [ "$focus" -le "$focus_end" ]; do
     v4l2-ctl -d "$device" --set-ctrl=focus_absolute="$focus"
     sleep "$SLEEP_SECONDS"
 
-    output="${output_dir}/f${focus}.png"
+    output="${output_dir}/f${focus}.jpg"
     attempt=1
     while [ "$attempt" -le "$CAPTURE_RETRIES" ]; do
         if python capture_frame_stable.py "$device" "$output"; then

@@ -5,16 +5,17 @@ Usage:
     python capture_frame_stable.py <video_device> --focus-test <start> <end>
 
 Examples:
-    python capture_frame_stable.py /dev/video0 out.png
+    python capture_frame_stable.py /dev/video0 out.jpg
     python capture_frame_stable.py /dev/video0 --focus-test 0 255
 
 Focus test mode:
     Disables autofocus and captures one image per focus value from <start> to
-    <end> in steps of 5, saving each to focustest/f<value>.png.
+    <end> in steps of 5, saving each to focustest/f<value>.jpg.
 
 Notes:
 - Prefer /dev/v4l/by-id/... instead of numeric indices. Those paths are much more stable.
 - The script explicitly uses the V4L2 backend, requests MJPG at 1920x1080, and retries on transient failures.
+- Frames are decoded from MJPG and re-encoded as JPEG at quality 95.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ WARMUP_GRABS = 3
 REQUESTED_WIDTH = 1920
 REQUESTED_HEIGHT = 1080
 REQUESTED_FOURCC = "MJPG"
-VALID_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+VALID_EXTENSIONS = {".jpg", ".jpeg"}
 
 
 def parse_device_arg(value: str) -> str | int:
@@ -80,6 +81,17 @@ def read_frame(cap: cv2.VideoCapture) -> tuple[bool, object]:
     return cap.read()
 
 
+def write_frame(frame, output_path: Path) -> bool:
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    if not ok:
+        return False
+    try:
+        output_path.write_bytes(buf.tobytes())
+        return True
+    except OSError:
+        return False
+
+
 def capture_with_retries(device: str | int, focus: int | None = None):
     last_error: str | None = None
 
@@ -89,9 +101,9 @@ def capture_with_retries(device: str | int, focus: int | None = None):
             cap = open_capture(device, focus=focus)
 
             for read_attempt in range(1, READ_RETRIES + 1):
-                ok, frame = read_frame(cap)
-                if ok and frame is not None:
-                    return frame
+                ok, buf = read_frame(cap)
+                if ok and buf is not None:
+                    return buf
 
                 last_error = (
                     f"read failed on attempt {read_attempt}/{READ_RETRIES} "
@@ -127,14 +139,14 @@ def focus_test(device: str | int, focus_start: int, focus_end: int) -> int:
     for focus in values:
         print(f"  focus={focus} ... ", end="", flush=True)
         try:
-            frame = capture_with_retries(device, focus=focus)
+            buf = capture_with_retries(device, focus=focus)
         except Exception as exc:
             print(f"FAILED ({exc})")
             errors += 1
             continue
 
-        out_path = out_dir / f"f{focus}.png"
-        if not cv2.imwrite(str(out_path), frame):
+        out_path = out_dir / f"f{focus}.jpg"
+        if not write_frame(buf, out_path):
             print(f"FAILED (could not write {out_path})")
             errors += 1
             continue
@@ -189,12 +201,12 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        frame = capture_with_retries(device, focus=focus)
+        buf = capture_with_retries(device, focus=focus)
     except Exception as exc:
         print(f"Error: {exc}")
         return 1
 
-    if not cv2.imwrite(str(output_path), frame):
+    if not write_frame(buf, output_path):
         print(f"Error: could not write image file '{output_path}'.")
         return 1
 
