@@ -25,11 +25,11 @@ meters:
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    perspective_src_points:   # mutually exclusive with crop_source_box
-      - [767, 599]             # top-left
-      - [1002, 587]             # top-right
-      - [1003, 627]            # bottom-right
-      - [765, 640]            # bottom-left    max_translation_px: 4
+    perspective_src_points:
+      - [767, 587]             # top-left
+      - [1003, 575]             # top-right
+      - [1005, 616]             # bottom-right
+      - [766, 629]             # bottom-left
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
@@ -46,11 +46,11 @@ meters:
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    perspective_src_points:   # mutually exclusive with crop_source_box
-      - [713, 429]             # top-left
-      - [944, 422]             # top-right
-      - [944, 461]            # bottom-right
-      - [712, 467]            # bottom-left    max_translation_px: 4
+    perspective_src_points:
+      - [736, 640]             # top-left
+      - [967, 636]             # top-right
+      - [970, 675]             # bottom-right
+      - [735, 682]             # bottom-left
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
