@@ -209,6 +209,7 @@ def cmd_watch(
     uncertain_dir: Annotated[Path, typer.Option("--uncertain-dir", help="Directory for uncertain frames")] = Path("data/raw/uncertain"),
     unknown_digits_dir: Annotated[Path, typer.Option("--unknown-digits-dir", help="Directory to save unreadable digit crops")] = Path("data/unknown_digits"),
     loop: Annotated[bool, typer.Option("--loop", help="Loop test images indefinitely")] = False,
+    latest_dir: Annotated[Path, typer.Option("--latest-dir", help="Directory for latest aligned crop per meter")] = Path("data/latest"),
     pre_read_cmd: Annotated[Optional[str], typer.Option("--pre-read-cmd", help="Shell command to run before each capture cycle (e.g. turn on a light)")] = None,
     post_read_cmd: Annotated[Optional[str], typer.Option("--post-read-cmd", help="Shell command to run after each capture cycle (e.g. turn off a light)")] = None,
     warmup_secs: Annotated[float, typer.Option("--warmup-secs", help="Seconds to wait after pre-read-cmd before capturing (only when --pre-read-cmd is set)")] = 2.0,
@@ -233,6 +234,7 @@ def cmd_watch(
     predictions_csv.parent.mkdir(parents=True, exist_ok=True)
     uncertain_dir.mkdir(parents=True, exist_ok=True)
     unknown_digits_dir.mkdir(parents=True, exist_ok=True)
+    latest_dir.mkdir(parents=True, exist_ok=True)
     _ensure_predictions_csv(predictions_csv)
 
     if len(meters_to_watch) == 1:
@@ -251,6 +253,7 @@ def cmd_watch(
             uncertain_dir=uncertain_dir,
             unknown_digits_dir=unknown_digits_dir,
             loop=loop,
+            latest_dir=latest_dir,
             pre_read_cmd=pre_read_cmd,
             post_read_cmd=post_read_cmd,
             warmup_secs=warmup_secs,
@@ -276,6 +279,7 @@ def cmd_watch(
                     uncertain_dir=uncertain_dir,
                     unknown_digits_dir=unknown_digits_dir,
                     loop=loop,
+                    latest_dir=latest_dir,
                     capture_barrier=capture_barrier,
                     done_barrier=done_barrier,
                     error_event=error_event,
@@ -344,6 +348,7 @@ def _do_one_cycle(
     uncertain_dir,
     unknown_digits_dir,
     offline,
+    latest_dir,
 ) -> int:
     """Grab one frame, predict, update state, write CSV. Returns new unknown_seq.
 
@@ -378,9 +383,11 @@ def _do_one_cycle(
         cv2.imwrite(str(uncertain_path), frame_bgr)
         append_review_item(review_csv, prediction, stable, uncertain_path)
 
+    aligned = align_meter(frame_bgr, meter_config)
+    cv2.imwrite(str(latest_dir / f"{meter_id}.png"), aligned)
+
     low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
     if low_conf_digits:
-        aligned = align_meter(frame_bgr, meter_config)
         frame_meta = FrameMeta(
             frame_id=frame_id,
             meter_id=meter_id,
@@ -412,6 +419,7 @@ def _run_watch_loop(
     uncertain_dir,
     unknown_digits_dir,
     loop,
+    latest_dir,
     pre_read_cmd=None,
     post_read_cmd=None,
     warmup_secs=2.0,
@@ -466,6 +474,7 @@ def _run_watch_loop(
                         uncertain_dir=uncertain_dir,
                         unknown_digits_dir=unknown_digits_dir,
                         offline=offline,
+                        latest_dir=latest_dir,
                     )
                     frame_count += 1
                 except CaptureError as e:
@@ -494,6 +503,7 @@ def _worker_loop(
     uncertain_dir,
     unknown_digits_dir,
     loop,
+    latest_dir,
     capture_barrier,
     done_barrier,
     error_event,
@@ -548,6 +558,7 @@ def _worker_loop(
                         uncertain_dir=uncertain_dir,
                         unknown_digits_dir=unknown_digits_dir,
                         offline=offline,
+                        latest_dir=latest_dir,
                     )
                 except CaptureError as e:
                     typer.echo(f"[{meter}] Capture stopped: {e}")
