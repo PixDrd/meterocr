@@ -1,6 +1,7 @@
 meters:
   - meter_id: M1
     video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_63928130-video-index0
+    focus: 20
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
@@ -21,6 +22,7 @@ meters:
 
   - meter_id: M2
     video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_7AAA8130-video-index0
+    focus: 60
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu
@@ -42,6 +44,7 @@ meters:
 
   - meter_id: M3
     video_device: /dev/v4l/by-id/usb-046d_B525_HD_Webcam_7FDE8130-video-index0
+    focus: 55
     aligned_width: 500
     aligned_height: 120
     threshold_mode: otsu

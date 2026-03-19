@@ -45,13 +45,15 @@ class WebcamCapture:
 
     def __init__(
         self,
-        device_index: int,
+        device: int | str,
         width: int = 1920,
         height: int = 1080,
+        focus: int | None = None,
     ) -> None:
         self._device = device
         self._width = width
         self._height = height
+        self._focus = focus
         self._cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
@@ -67,6 +69,9 @@ class WebcamCapture:
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+        if self._focus is not None:
+            cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+            cap.set(cv2.CAP_PROP_FOCUS, self._focus)
         self._cap = cap
 
     def close(self) -> None:

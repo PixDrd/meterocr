@@ -439,7 +439,7 @@ def _run_watch_loop(
                 err=True,
             )
             return
-        capture = WebcamCapture(resolved_device)
+        capture = WebcamCapture(resolved_device, focus=meter_config.focus)
         typer.echo(f"[{meter}] Live mode: webcam device '{resolved_device}'")
 
     state = MeterState(meter_id=meter)
@@ -528,7 +528,7 @@ def _worker_loop(
             except Exception:
                 pass
             return
-        capture = WebcamCapture(resolved_device)
+        capture = WebcamCapture(resolved_device, focus=meter_config.focus)
         typer.echo(f"[{meter}] Live mode: webcam device '{resolved_device}'")
 
     state = MeterState(meter_id=meter)

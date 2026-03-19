@@ -42,6 +42,7 @@ class MeterConfig:
     inner_pad_x: int = 0
     inner_pad_y: int = 0
     video_device: str | None = None
+    focus: int | None = None
 
 
 @dataclass(frozen=True)
