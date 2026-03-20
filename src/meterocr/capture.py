@@ -50,7 +50,7 @@ class WebcamCapture:
         height: int = 1080,
         focus: int | None = None,
         warmup_grabs: int = 3,
-        focus_settle_s: float = 4.0,
+        focus_settle_s: float = 8.0,
     ) -> None:
         self._device = device
         self._width = width

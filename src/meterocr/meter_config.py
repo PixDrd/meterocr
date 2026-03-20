@@ -58,6 +58,7 @@ def load_meter_configs(path: Path) -> dict[str, MeterConfig]:
             inner_pad_y=entry.get("inner_pad_y", 0),
             video_device=entry.get("video_device"),
             focus=entry.get("focus"),
+            focus_settle_s=entry.get("focus_settle_s", 8.0),
         )
         _validate_meter_config(cfg)
         configs[cfg.meter_id] = cfg
