@@ -292,9 +292,11 @@ def cmd_watch(
             t.start()
 
         try:
+            first = True
             while True:
-                if not offline or loop:
+                if not first and (not offline or loop):
                     time.sleep(interval)
+                first = False
 
                 if error_event.is_set():
                     capture_barrier.abort()
@@ -450,9 +452,11 @@ def _run_watch_loop(
 
     try:
         with capture:
+            first = True
             while True:
-                if not offline or loop:
+                if not first and (not offline or loop):
                     time.sleep(interval)
+                first = False
 
                 if pre_read_cmd:
                     _run_cmd(pre_read_cmd)
