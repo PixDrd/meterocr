@@ -29,6 +29,7 @@ import cv2
 OPEN_RETRIES = 4
 READ_RETRIES = 5
 RETRY_DELAY_SECONDS = 4.0
+FOCUS_SLEEP_SECONDS = 0.5
 WARMUP_GRABS = 3
 REQUESTED_WIDTH = 1920
 REQUESTED_HEIGHT = 1080
@@ -72,6 +73,7 @@ def open_capture(device: str | int, focus: int | None = None) -> cv2.VideoCaptur
     if focus is not None:
         cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
         cap.set(cv2.CAP_PROP_FOCUS, focus)
+        time.sleep(FOCUS_SLEEP_SECONDS)
     return cap
 
 
