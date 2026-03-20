@@ -6,11 +6,11 @@ meters:
     aligned_height: 120
     threshold_mode: otsu
     invert_binary: true
-    perspective_src_points:   # mutually exclusive with crop_source_box
-      - [927, 674]             # top-left
-      - [1172, 672]             # top-right
-      - [1173, 713]            # bottom-right
-      - [925, 716]            # bottom-left    max_translation_px: 4
+    perspective_src_points:
+      - [926, 670]             # top-left
+      - [1174, 668]             # top-right
+      - [1174, 712]             # bottom-right
+      - [923, 716]             # bottom-left
     inner_pad_x: 2
     inner_pad_y: 2
     digit_boxes:
