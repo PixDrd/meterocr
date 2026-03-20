@@ -50,12 +50,14 @@ class WebcamCapture:
         height: int = 1080,
         focus: int | None = None,
         warmup_grabs: int = 3,
+        focus_settle_s: float = 0.5,
     ) -> None:
         self._device = device
         self._width = width
         self._height = height
         self._focus = focus
         self._warmup_grabs = warmup_grabs
+        self._focus_settle_s = focus_settle_s
         self._cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
@@ -74,6 +76,8 @@ class WebcamCapture:
         if self._focus is not None:
             cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
             cap.set(cv2.CAP_PROP_FOCUS, self._focus)
+            if self._focus_settle_s > 0:
+                time.sleep(self._focus_settle_s)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         for _ in range(self._warmup_grabs):
             cap.grab()
