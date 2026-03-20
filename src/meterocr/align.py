@@ -35,6 +35,34 @@ def align_meter(frame_bgr: ImageU8, config: MeterConfig) -> ImageU8:
     return aligned
 
 
+def raw_crop_meter(frame_bgr: ImageU8, config: MeterConfig) -> ImageU8:
+    """Return the bounding-box crop of the meter region, with no warp or resize.
+
+    Useful for saving a before/after pair alongside the aligned image.
+    Uses the bounding box of perspective_src_points, or crop_source_box, or
+    the full frame if neither is configured.
+    """
+    h_frame, w_frame = frame_bgr.shape[:2]
+
+    if config.perspective_src_points is not None:
+        pts = np.array(config.perspective_src_points, dtype=np.float32)
+        x1 = int(np.clip(pts[:, 0].min(), 0, w_frame))
+        y1 = int(np.clip(pts[:, 1].min(), 0, h_frame))
+        x2 = int(np.clip(pts[:, 0].max(), 0, w_frame))
+        y2 = int(np.clip(pts[:, 1].max(), 0, h_frame))
+        return frame_bgr[y1:y2, x1:x2]
+
+    if config.crop_source_box is not None:
+        box = config.crop_source_box
+        x1 = max(0, box.x)
+        y1 = max(0, box.y)
+        x2 = min(w_frame, box.x + box.w)
+        y2 = min(h_frame, box.y + box.h)
+        return frame_bgr[y1:y2, x1:x2]
+
+    return frame_bgr
+
+
 def crop_meter(frame_bgr: ImageU8, config: MeterConfig) -> ImageU8:
     """Crop and resize a meter region from the frame using crop_source_box.
 

@@ -16,7 +16,7 @@ import typer
 
 import re
 
-from meterocr.align import align_meter
+from meterocr.align import align_meter, raw_crop_meter
 from meterocr.segment import crop_digit_cell, extract_digit_cells
 from meterocr.normalize import normalize_digit
 from meterocr.capture import (
@@ -387,6 +387,8 @@ def _do_one_cycle(
 
     aligned = align_meter(frame_bgr, meter_config)
     cv2.imwrite(str(latest_dir / f"{meter_id}.png"), aligned)
+    cv2.imwrite(str(latest_dir / f"{meter_id}_raw.png"), raw_crop_meter(frame_bgr, meter_config))
+    cv2.imwrite(str(latest_dir / f"{meter_id}_full.png"), frame_bgr)
 
     low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
     if low_conf_digits:
