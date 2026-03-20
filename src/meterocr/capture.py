@@ -70,6 +70,7 @@ class WebcamCapture:
         # Request MJPG encoding before setting resolution; this is required for
         # USB webcams to deliver full 1920x1080 without hitting the USB 2.0
         # bandwidth ceiling that raw YUYV would hit at high resolutions.
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
@@ -78,7 +79,6 @@ class WebcamCapture:
             cap.set(cv2.CAP_PROP_FOCUS, self._focus)
             if self._focus_settle_s > 0:
                 time.sleep(self._focus_settle_s)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         for _ in range(self._warmup_grabs):
             cap.grab()
         self._cap = cap
