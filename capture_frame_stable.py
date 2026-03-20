@@ -28,7 +28,7 @@ import cv2
 
 OPEN_RETRIES = 4
 READ_RETRIES = 5
-RETRY_DELAY_SECONDS = 1.0
+RETRY_DELAY_SECONDS = 4.0
 WARMUP_GRABS = 3
 REQUESTED_WIDTH = 1920
 REQUESTED_HEIGHT = 1080
@@ -109,7 +109,7 @@ def capture_with_retries(device: str | int, focus: int | None = None):
                     f"read failed on attempt {read_attempt}/{READ_RETRIES} "
                     f"after opening {describe_device(device)}"
                 )
-                time.sleep(0.2)
+                time.sleep(RETRY_DELAY_SECONDS)
 
             last_error = (
                 f"opened {describe_device(device)} but could not read a frame after "
