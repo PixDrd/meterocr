@@ -755,6 +755,11 @@ def cmd_import_unknown(
 
     typer.echo(f"\nImported {imported} samples, skipped {skipped} files.")
 
+## Just to check whether meterocr responds to commands.
+# @since		2026-03-23 19:55:23
+@app.command("test")
+def test():
+	print( "Hello!" )
 
 def _next_unknown_seq(directory: Path, meter_id: str) -> int:
     """Return the next sequence number for unknown digit crops in directory."""

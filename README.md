@@ -33,11 +33,27 @@ The same digit classifier is shared across all three meters and all digit positi
 - Python 3.11+
 - OpenCV-compatible USB webcams (or test images for offline use)
 
+Install virtualenv:
+
+```python3 -m venv .venv
+```
+
+Activate the venv:
+
+```source .venv/bin/activate
+```
+
 Install dependencies:
 
-```bash
-pip install -e ".[dev]"
+```pip install -e ".[dev]"
 ```
+
+Check that anything works:
+
+```meterocr test
+```
+
+Should reply with "hello".
 
 ---
 
