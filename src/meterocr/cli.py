@@ -387,7 +387,7 @@ def _do_one_cycle(
 
     aligned = align_meter(frame_bgr, meter_config)
     cv2.imwrite(str(latest_dir / f"{meter_id}.png"), aligned)
-    cv2.imwrite(str(latest_dir / f"{meter_id}.jpg"), aligned)
+    cv2.imwrite(str(latest_dir / f"{meter_id}.jpg"), aligned, [ int(cv2.IMWRITE_JPEG_QUALITY), 80 ] )
     cv2.imwrite(str(latest_dir / f"{meter_id}_raw.png"), raw_crop_meter(frame_bgr, meter_config))
     cv2.imwrite(str(latest_dir / f"{meter_id}_full.png"), frame_bgr)
 
