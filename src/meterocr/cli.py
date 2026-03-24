@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import meterocr.www as www
 import subprocess
 import sys
 import threading
@@ -754,6 +755,16 @@ def cmd_import_unknown(
         imported += 1
 
     typer.echo(f"\nImported {imported} samples, skipped {skipped} files.")
+
+## This will maybe send the latest cropped images to www.
+# @since		2026-03-23 19:57:22
+@app.command( "maybe_upload_latest_images" )
+def maybe_upload_latest_images(
+	meter_configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+	latest_dir: Annotated[Path, typer.Option("--latest-dir", help="Directory for latest aligned crop per meter")] = Path("data/latest"),
+	):
+	meter_configs = load_meter_configs( meter_configs )
+	www.maybe_upload_latest_images( meter_configs = meter_configs, latest_dir = latest_dir )
 
 ## Just to check whether meterocr responds to commands.
 # @since		2026-03-23 19:55:23
