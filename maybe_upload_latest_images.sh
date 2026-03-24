@@ -1,4 +1,13 @@
 #!/bin/bash
 source .venv/bin/activate
-mkdir data/logs
-meterocr maybe_upload_latest_images >> data/logs/maybe_upload_latest_images.log
+
+LOGDIR="data/logs"
+LOG="${LOGDIR}/maybe_upload_latest_images.log"
+
+if [ ! -d "$LOGDIR" ]
+then
+	mkdir "$LOGDIR"
+fi
+
+echo -n "`date` " >> $LOG
+meterocr maybe_upload_latest_images >> $LOG
