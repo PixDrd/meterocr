@@ -90,8 +90,8 @@ def should_we_upload( **kwargs ):
 		return False
 
 	# And now we check the time.
-	if not is_time_between( www_config[ 'image_upload_begin' ], www_config[ 'image_upload_end' ] ):
-		return False
+	#if not is_time_between( www_config[ 'image_upload_begin' ], www_config[ 'image_upload_end' ] ):
+		#return False
 
 	# It all looks good.
 	return True

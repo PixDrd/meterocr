@@ -1,6 +1,6 @@
 www:
   image_upload_enabled : true
-  image_upload_begin: "04:00"
-  image_upload_end: "23:14"
+  #image_upload_begin: "04:00"
+  #image_upload_end: "23:14"
   url: https://boke.hemmestorp.se/vattnet/vattenstatistik/
   #url: http://boke.hemmestorp.ed.com/water-clickable-table/
