@@ -390,10 +390,13 @@ def _do_one_cycle(
         append_review_item(review_csv, prediction, stable, uncertain_path)
 
     aligned = align_meter(frame_bgr, meter_config)
-    cv2.imwrite(str(latest_dir / f"{meter_id}.png"), aligned)
-    cv2.imwrite(str(latest_dir / f"{meter_id}.jpg"), aligned, [ int(cv2.IMWRITE_JPEG_QUALITY), 80 ] )
-    cv2.imwrite(str(latest_dir / f"{meter_id}_raw.png"), raw_crop_meter(frame_bgr, meter_config))
-    cv2.imwrite(str(latest_dir / f"{meter_id}_full.png"), frame_bgr)
+#    cv2.imwrite(str(latest_dir / f"{meter_id}.png"), aligned)
+#    cv2.imwrite(str(latest_dir / f"{meter_id}_raw.png"), raw_crop_meter(frame_bgr, meter_config))
+#    cv2.imwrite(str(latest_dir / f"{meter_id}_full.png"), frame_bgr)
+    jpg_settings = [ int(cv2.IMWRITE_JPEG_QUALITY), 80 ] 
+    cv2.imwrite(str(latest_dir / f"{meter_id}.jpg"), aligned, jpg_settings )
+    cv2.imwrite(str(latest_dir / f"{meter_id}_raw.jpg"), raw_crop_meter(frame_bgr, meter_config), jpg_settings)
+    cv2.imwrite(str(latest_dir / f"{meter_id}_full.jpg"), frame_bgr, jpg_settings)
 
     low_conf_digits = [dp for dp in prediction.digits if dp.confidence < min_confidence]
     if low_conf_digits:
