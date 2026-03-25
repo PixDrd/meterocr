@@ -39,11 +39,17 @@ meterocr evaluate
 # Single-frame inference
 meterocr predict --meter M1 --image path/to/frame.png
 
-# Continuous monitoring (live)
-meterocr watch --meter M1 --interval 60
+# Read all meters once and exit (designed for crontab)
+meterocr read
+
+# Read a single meter
+meterocr read --meter M1
 
 # Offline testing with test images in data/test_images/M1/
-meterocr watch --meter M1 --offline --loop --interval 0
+meterocr read --offline
+
+# Offline loop mode (cycles through test images)
+meterocr read --offline --loop
 ```
 
 ## Architecture
@@ -111,7 +117,7 @@ data/
     samples.csv     Per-digit samples with labels (input to train)
     review_queue.csv  Uncertain frames flagged for review
   predictions/
-    predictions.csv   Accepted stable readings from watch
+    predictions.csv   Accepted stable readings from read
   reports/      Confusion matrices and accuracy CSVs
   test_images/  Offline test images (M1/, M2/, M3/ subdirs)
 models/         Trained joblib bundles (gitignored)
@@ -122,5 +128,5 @@ models/         Trained joblib bundles (gitignored)
 1. Capture reference frames → measure pixel coordinates → update `configs/meters.yaml`
 2. `label-frame` × 10–20 frames per meter across different readings
 3. `train` → `evaluate` → check accuracy reports
-4. `watch --meter M1 --interval 60` for live monitoring
+4. Add `meterocr read` to crontab (e.g. `*/10 * * * * cd /path/to/meterocr && .venv/bin/meterocr read`)
 5. Review `review_queue.csv` uncertain frames, re-label if needed, retrain to improve
