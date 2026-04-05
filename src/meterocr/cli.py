@@ -176,6 +176,7 @@ def cmd_predict(
     image: Annotated[Path, typer.Option("--image", "-i", help="Path to frame image")],
     model: Annotated[Path, typer.Option("--model", help="Path to model bundle")] = _DEFAULT_MODEL,
     configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+    reading_only: Annotated[bool, typer.Option("--reading-only", help="Only print the raw reading value")] = False,
 ) -> None:
     """Predict the meter reading from a single frame image."""
     meter_configs = load_meter_configs(configs)
@@ -183,6 +184,9 @@ def cmd_predict(
     bundle = load_model_bundle(model)
 
     result = predict_meter_reading(image, meter_config, bundle)
+    if reading_only:
+        typer.echo(result.raw_reading)
+        return
     typer.echo(f"Reading: {result.raw_reading}")
     typer.echo(f"Min confidence: {result.min_confidence:.3f}")
     typer.echo(f"Mean confidence: {result.mean_confidence:.3f}")
