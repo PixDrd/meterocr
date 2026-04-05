@@ -34,6 +34,9 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 ZOOM_FACTOR = 1.15
 MAX_ZOOM = 32.0
 MIN_ZOOM = 0.05
+STATUS_BAR_H = 32     # pixels reserved at bottom for the status bar
+MIN_WIN_W = 600
+MIN_WIN_H = 450
 
 # ── coordinate helpers ────────────────────────────────────────────────────────
 
@@ -98,18 +101,21 @@ def render(img, win_w, win_h, view_x, view_y, scale, points, dragging, loupe_pos
     if loupe_pos is not None:
         _draw_loupe(canvas, img, loupe_pos, view_x, view_y, scale, win_w, win_h)
 
-    # Status bar
+    # Status bar at bottom
     if n < 4:
         status = f"Click {n + 1}/4: {CORNER_LABELS[n]}   |   +/-=zoom   |   r=reset   |   q=quit"
     else:
         status = "Drag corners to adjust.  Enter = confirm & print config.  r = reset."
-    cv2.rectangle(canvas, (0, 0), (win_w, 30), (30, 30, 30), -1)
-    cv2.putText(canvas, status, (8, 20), FONT, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
+    bar_y = win_h - STATUS_BAR_H
+    cv2.rectangle(canvas, (0, bar_y), (win_w, win_h), (30, 30, 30), -1)
+    text_y = win_h - (STATUS_BAR_H - 20) // 2 - 4
+    cv2.putText(canvas, status, (8, text_y), FONT, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
 
-    # Zoom level badge
+    # Zoom level badge (right-aligned in status bar)
     zlabel = f"zoom {scale:.2f}x"
-    tw, _ = cv2.getTextSize(zlabel, FONT, 0.45, 1)[0], None
-    cv2.putText(canvas, zlabel, (win_w - tw[0] - 10, 20), FONT, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
+    (tw, _th), _ = cv2.getTextSize(zlabel, FONT, 0.45, 1)
+    zx = max(8, win_w - tw - 10)
+    cv2.putText(canvas, zlabel, (zx, text_y), FONT, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
 
     return canvas
 
@@ -147,11 +153,16 @@ def _draw_loupe(canvas, img, screen_pos, view_x, view_y, scale, win_w, win_h):
     oy = sy - 20 - LOUPE_SIZE
     if ox + LOUPE_SIZE > win_w:
         ox = sx - 20 - LOUPE_SIZE
-    if oy < 30:
+    if oy < 0:
         oy = sy + 20
+    # Keep loupe above the status bar
+    oy = min(oy, win_h - STATUS_BAR_H - LOUPE_SIZE)
+    ox = max(0, min(ox, win_w - LOUPE_SIZE))
+    oy = max(0, oy)
 
-    canvas[oy:oy + LOUPE_SIZE, ox:ox + LOUPE_SIZE] = zoomed
-    cv2.rectangle(canvas, (ox, oy), (ox + LOUPE_SIZE, oy + LOUPE_SIZE), (0, 200, 255), 1)
+    if ox + LOUPE_SIZE <= win_w and oy + LOUPE_SIZE <= win_h:
+        canvas[oy:oy + LOUPE_SIZE, ox:ox + LOUPE_SIZE] = zoomed
+        cv2.rectangle(canvas, (ox, oy), (ox + LOUPE_SIZE, oy + LOUPE_SIZE), (0, 200, 255), 1)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -173,14 +184,15 @@ def main():
 
     H, W = img.shape[:2]
 
-    # Window size — fit image but cap at a sensible max
-    WIN_W = min(1400, W)
-    WIN_H = min(900, H)
+    # Window size — fit image but cap at a sensible max; enforce a minimum
+    WIN_W = max(MIN_WIN_W, min(1400, W))
+    WIN_H = max(MIN_WIN_H, min(900, H + STATUS_BAR_H))
 
-    # Initial zoom: fit image in window
-    scale = min(WIN_W / W, WIN_H / H)
-    view_x = -(WIN_W / scale - W) / 2  # centre image
-    view_y = -(WIN_H / scale - H) / 2
+    # Initial zoom: fit image in the image area (canvas minus status bar)
+    avail_h = WIN_H - STATUS_BAR_H
+    scale = min(WIN_W / W, avail_h / H)
+    view_x = -(WIN_W / scale - W) / 2  # centre image horizontally
+    view_y = -(avail_h / scale - H) / 2  # centre image vertically
 
     points = []        # corners in image coords (floats)
     dragging = None    # index of corner currently being dragged
@@ -267,6 +279,16 @@ def main():
     redraw()
 
     while True:
+        # Detect window resize and update render dimensions
+        try:
+            rect = cv2.getWindowImageRect(window)
+            if rect[2] >= MIN_WIN_W and rect[3] >= MIN_WIN_H:
+                if rect[2] != WIN_W or rect[3] != WIN_H:
+                    WIN_W, WIN_H = rect[2], rect[3]
+                    dirty = True
+        except Exception:
+            pass
+
         if dirty:
             redraw()
             dirty = False

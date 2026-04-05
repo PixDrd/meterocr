@@ -13,9 +13,9 @@ while IFS= read -r -d '' image; do
     found=1
     filename=$(basename "$image")
     filename="${filename%.*}"
-    meter="${filename%%_*}"
-    reading="${filename#*_}"
-    reading="${reading%%_*}"
+    meter=$(echo "${filename%%_*}" | tr '[:lower:]' '[:upper:]')
+    rest="${filename#*_}"   # strip meter prefix
+    reading=$(printf '%05d' "${rest#*_}")  # strip timestamp, pad to 5 digits
     echo "Labeling $image  meter=$meter  reading=$reading"
     meterocr label-frame --meter "$meter" --image "$image" --reading "$reading"
 done < <(find "$folder" -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | sort -z)
