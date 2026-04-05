@@ -127,7 +127,40 @@ meterocr capture-frame --meter M2 --output data/raw/ref_M2.png
 meterocr capture-frame --meter M3 --output data/raw/ref_M3.png
 ```
 
+Pass `--device` to override the webcam device without editing `meters.yaml`:
+
+```bash
+meterocr capture-frame --meter M1 --output data/raw/ref_M1.png --device /dev/video4
+```
+
 Then update `configs/meters.yaml` with the measured coordinates.
+
+### Verify crop coordinates with `crop-test`
+
+After updating coordinates, verify the alignment without running the full pipeline:
+
+```bash
+# Capture a fresh frame and show the aligned crop + digit cells
+meterocr crop-test --meter M1
+
+# Use an existing image instead of capturing
+meterocr crop-test --meter M1 --image data/raw/ref_M1.png
+
+# Save to a custom path
+meterocr crop-test --meter M1 --image data/raw/ref_M1.png --output data/aligned/check_M1.png
+```
+
+This saves the aligned crop and one image per digit cell (e.g. `check_M1_1.png` … `check_M1_5.png`). Inspect them to confirm the digit cells are correctly positioned before labeling.
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--meter` / `-m` | required | Meter ID |
+| `--image` / `-i` | — | Input frame; omit to capture from webcam |
+| `--output` / `-o` | `data/aligned/<meter>_crop_test.png` | Output path for aligned crop |
+| `--device` | from meters.yaml | Override webcam device |
+| `--configs` | `configs/meters.yaml` | Path to meters.yaml |
 
 ---
 
@@ -203,28 +236,37 @@ Mean confidence: 2.105
 
 ---
 
-## Watch — continuous monitoring
+## Read — one-shot meter reading
+
+`meterocr read` reads all meters once and exits. Use crontab to control the schedule.
+
+Temporal state (monotonicity, last stable reading) is bootstrapped from `predictions.csv` at startup, so each invocation continues where the last left off.
+
+### Crontab setup
+
+```cron
+# Read all meters every 10 minutes
+*/10 * * * * cd /home/pi/meterocr && .venv/bin/meterocr read
+```
 
 ### Live USB webcam
 
 The webcam device is read from `video_device` in `meters.yaml`, so normally no extra flags are needed:
 
 ```bash
-meterocr watch --meter M1
-meterocr watch --meter M2
-meterocr watch --meter M3
+meterocr read
 ```
 
-Override the device at runtime if needed:
+Read a single meter:
 
 ```bash
-meterocr watch --meter M1 --device /dev/video0
+meterocr read --meter M1
 ```
 
-The default capture interval is 60 seconds. Adjust with `--interval`:
+Override the device at runtime if needed (single-meter only):
 
 ```bash
-meterocr watch --meter M1 --interval 300
+meterocr read --meter M1 --device /dev/video0
 ```
 
 ### Offline testing with test images
@@ -232,22 +274,22 @@ meterocr watch --meter M1 --interval 300
 Put images in `data/test_images/M1/`, `data/test_images/M2/`, `data/test_images/M3/` (any common image format, sorted by filename).
 
 ```bash
-meterocr watch --meter M1 --offline
+meterocr read --offline
 ```
 
-Or point to a custom directory:
+Or point to a custom directory (single-meter):
 
 ```bash
-meterocr watch --meter M1 --offline --test-images path/to/images/
+meterocr read --meter M1 --offline --test-images path/to/images/
 ```
 
 Add `--loop` to cycle through the images repeatedly:
 
 ```bash
-meterocr watch --meter M1 --offline --loop --interval 0
+meterocr read --offline --loop
 ```
 
-### Watch output
+### Read output
 
 Each processed frame produces a line:
 
@@ -259,16 +301,42 @@ Each processed frame produces a line:
 Accepted readings are appended to `data/predictions/predictions.csv`.
 Uncertain/rejected frames go to `data/labels/review_queue.csv` and optionally saved as images in `data/raw/uncertain/`.
 
-### Confidence and plausibility tuning
+### Lighting control
+
+If you control a light around each capture (e.g. via a smart plug or GPIO), use the pre/post command hooks:
 
 ```bash
-meterocr watch --meter M1 \
-  --min-confidence 0.8 \
-  --max-delta-hour 50
+meterocr read \
+  --pre-read-cmd "python turn_light_on.py" \
+  --post-read-cmd "python turn_light_off.py" \
+  --warmup-secs 2.0
 ```
 
-- `--min-confidence` — minimum per-digit decision margin to accept a reading (default: 0.5)
-- `--max-delta-hour` — maximum plausible meter increment per hour; omit to disable (useful once you know your flow rate)
+`--warmup-secs` (default: 2.0) is the delay between the pre-command finishing and the actual capture, giving the light time to stabilise.
+
+### Full `read` option reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--meter` / `-m` | all meters | Meter ID to read; omit to read all sequentially |
+| `--model` | `models/digit_clf.joblib` | Path to model bundle |
+| `--configs` | `configs/meters.yaml` | Path to meters.yaml |
+| `--defaults` | `configs/defaults.yaml` | Path to defaults.yaml |
+| `--device` | from meters.yaml | Override webcam device (single-meter only) |
+| `--offline` | false | Use test images instead of webcam |
+| `--test-images` | `data/test_images/<meter>/` | Test image directory (single-meter offline only) |
+| `--loop` | false | Loop test images indefinitely (offline only) |
+| `--min-confidence` | `0.5` | Minimum per-digit decision margin to accept a reading |
+| `--max-delta-hour` | disabled | Maximum plausible meter increment per hour |
+| `--predictions-csv` | `data/predictions/predictions.csv` | Output accepted readings CSV (also used to bootstrap temporal state) |
+| `--review-csv` | `data/labels/review_queue.csv` | Review queue CSV for held frames |
+| `--save-uncertain` | true | Save image of uncertain/rejected frames |
+| `--uncertain-dir` | `data/raw/uncertain/` | Directory for uncertain frame images |
+| `--unknown-digits-dir` | `data/unknown_digits/` | Directory for low-confidence digit crops |
+| `--latest-dir` | `data/latest/` | Updated each run with the latest aligned crop, raw crop, and full frame per meter |
+| `--pre-read-cmd` | — | Shell command run before capture |
+| `--post-read-cmd` | — | Shell command run after capture |
+| `--warmup-secs` | `2.0` | Seconds to wait after `--pre-read-cmd` before capturing |
 
 ---
 
@@ -283,6 +351,33 @@ After the initial model is running, improve it without manual effort:
 
 Focus labeling effort on frames where the model was uncertain or wrong. The review queue already flags those.
 
+### Importing low-confidence digit crops
+
+`read` saves individual digit crops it could not classify confidently to `data/unknown_digits/` with names like `M1_0001_pos2_unknown.png`. To turn these into training samples:
+
+1. Open the directory and rename each file, replacing `unknown` with the correct digit:
+   `M1_0001_pos2_unknown.png` → `M1_0001_pos2_7.png`
+2. Run `import-unknown` to normalise and append them to `samples.csv`:
+
+```bash
+meterocr import-unknown data/unknown_digits/
+```
+
+3. Retrain:
+
+```bash
+meterocr train
+```
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--samples` | `data/labels/samples.csv` | Output samples CSV |
+| `--normalized-dir` | `data/normalized/` | Where to save normalised images |
+| `--configs` | `configs/meters.yaml` | Path to meters.yaml |
+| `--defaults` | `configs/defaults.yaml` | Path to defaults.yaml |
+
 ---
 
 ## Configuration reference
@@ -292,20 +387,23 @@ Focus labeling effort on frames where the model was uncertain or wrong. The revi
 ```yaml
 meters:
   - meter_id: M1
-    video_device: /dev/video0 # full device path for the USB webcam for this meter
-    aligned_width: 500        # width of the canonical aligned crop (pixels)
-    aligned_height: 120       # height of the canonical aligned crop (pixels)
-    threshold_mode: otsu      # 'otsu' or 'adaptive'
-    invert_binary: true       # true if digit is dark on a light background
-    crop_source_box:          # rectangle in the raw camera frame
+    video_device: /dev/video0  # full device path for the USB webcam for this meter
+    focus: 95                  # manual focus value 0–255; omit to leave autofocus enabled
+    focus_settle_s: 8.0        # seconds to wait after setting focus before capturing (default 8.0)
+    aligned_width: 500         # width of the canonical aligned crop (pixels)
+    aligned_height: 120        # height of the canonical aligned crop (pixels)
+    threshold_mode: otsu       # 'otsu' or 'adaptive'
+    invert_binary: true        # true if digit is dark on a light background
+    crop_source_box:           # rectangle in the raw camera frame
       x: 120
       y: 80
       w: 500
       h: 120
-    max_translation_px: 4     # max drift correction in pixels (0 to disable)
-    inner_pad_x: 2            # shrink each digit cell box inward (removes separator borders)
+    max_translation_px: 4      # max drift correction in pixels (0 to disable)
+    alignment_reference_path: data/raw/ref_M1.png  # reference image for drift correction; required when max_translation_px > 0
+    inner_pad_x: 2             # shrink each digit cell box inward (removes separator borders)
     inner_pad_y: 2
-    digit_boxes:              # one entry per digit, left to right, relative to aligned crop
+    digit_boxes:               # one entry per digit, left to right, relative to aligned crop
       - { x: 0,   y: 0, w: 92, h: 120 }
       - { x: 96,  y: 0, w: 92, h: 120 }
       - { x: 192, y: 0, w: 92, h: 120 }
@@ -314,6 +412,8 @@ meters:
 ```
 
 `video_device` should be the full device path (e.g. `/dev/video0`, `/dev/video2`). This keeps the meter-to-camera assignment stable across reboots when combined with udev rules. You can override it at runtime with `--device`.
+
+`focus` sets manual focus. The V4L2 focus scale is typically 0–255; the optimal value depends on the lens and distance. Use `capture_frame_stable.py --focus-test 0 255` to sweep focus values and find the sharpest setting. When `focus` is set, `focus_settle_s` controls how long to wait after commanding the focus position before grabbing a frame — the motor needs time to reach its target.
 
 If the camera is mounted at an angle to the meter face, use `perspective_src_points` instead of `crop_source_box`. Provide the four corners of the meter display in the raw frame — the code applies a perspective warp to straighten them into the canonical rectangle.
 
@@ -340,24 +440,26 @@ hog:
   orientations: 9
   pixels_per_cell: [4, 4]
   cells_per_block: [2, 2]
-  block_norm: L2-Hys
+  block_norm: L2-Hys         # 'L2-Hys', 'L1', 'L1-sqrt', or 'L2'
   transform_sqrt: false
 
 normalization:
-  blur_kernel: 3
+  blur_kernel: 3             # Gaussian blur kernel size (odd integer; 0 to disable)
   min_component_area: 8      # minimum blob size in pixels (removes noise)
   bbox_margin_px: 2          # padding around the digit blob before centering
   output_width: 40
   output_height: 64
-  foreground: white          # 'white' (digit bright) or 'black' (digit dark)
+  foreground: white          # 'white' (digit bright on dark) or 'black' (digit dark on bright)
 
 training:
   model_type: linear_svc     # 'linear_svc' or 'knn'
-  test_size: 0.2
-  group_by: frame            # split validation by 'frame', 'date', or 'meter'
+  test_size: 0.2             # fraction of frames held out for validation
+  group_by: frame            # validation split grouping: 'frame', 'date', or 'meter'
   random_state: 42
-  svc_c: 1.0
-  use_standard_scaler: true
+  svc_c: 1.0                 # LinearSVC regularisation strength (higher = less regularisation)
+  use_standard_scaler: true  # normalise HOG features before classification (recommended)
+  knn_neighbors: 3           # number of neighbours (only used when model_type: knn)
+  knn_weights: distance      # 'uniform' or 'distance' (only used when model_type: knn)
 ```
 
 ---
