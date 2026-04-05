@@ -8,10 +8,16 @@ meters:
     threshold_mode: otsu
     invert_binary: true
     perspective_src_points:
-      - [926, 670]             # top-left
-      - [1174, 668]             # top-right
-      - [1174, 712]             # bottom-right
-      - [923, 716]             # bottom-left
+    #The first for numbers are for boke web export images
+#      - [7, 14]             # top-left
+#      - [252, 10]             # top-right
+#      - [254, 51]             # bottom-right
+#      - [6, 56]             # bottom-left
+    #The last for is for live camera images
+      - [926, 669]             # top-left
+      - [1174, 665]             # top-right
+      - [1175, 708]             # bottom-right
+      - [925, 712]             # bottom-left    
     inner_pad_x: 2
     inner_pad_y: 2
     digit_boxes:
@@ -30,10 +36,16 @@ meters:
     threshold_mode: otsu
     invert_binary: true
     perspective_src_points:
-      - [767, 587]             # top-left
-      - [1003, 575]             # top-right
-      - [1005, 616]             # bottom-right
-      - [766, 629]             # bottom-left
+    #The first for numbers are for boke web export images
+#      - [18, 19]             # top-left
+#      - [256, 7]             # top-right
+#      - [256, 50]             # bottom-right
+#      - [17, 63]             # bottom-left
+    #The last for is for live camera images
+      - [766, 581]             # top-left
+      - [1002, 570]             # top-right
+      - [1003, 613]             # bottom-right
+      - [764, 625]             # bottom-left
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
@@ -53,10 +65,16 @@ meters:
     threshold_mode: otsu
     invert_binary: true
     perspective_src_points:
-      - [736, 640]             # top-left
-      - [967, 636]             # top-right
-      - [970, 675]             # bottom-right
-      - [735, 682]             # bottom-left
+    #The first for numbers are for boke web export images
+#      - [16, 9]             # top-left
+#      - [250, 1]             # top-right
+#      - [253, 44]             # bottom-right
+#      - [16, 52]             # bottom-left
+    #The last for is for live camera images
+      - [733, 629]             # top-left
+      - [964, 622]             # top-right
+      - [965, 664]             # bottom-right
+      - [733, 672]             # bottom-left    
     max_translation_px: 4
     inner_pad_x: 2
     inner_pad_y: 2
