@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -82,6 +82,7 @@ class TrainingConfig:
     knn_neighbors: int = 3
     knn_weights: Literal["uniform", "distance"] = "distance"
     svc_c: float = 1.0
+    svc_class_weight: Any = "balanced"
     use_standard_scaler: bool = True
 
 

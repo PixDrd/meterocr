@@ -168,7 +168,12 @@ def train_linear_svc(
     if cfg.use_standard_scaler:
         scaler = StandardScaler()
         X = scaler.fit_transform(X)
-    clf = LinearSVC(C=cfg.svc_c, random_state=cfg.random_state, max_iter=2000)
+    clf = LinearSVC(
+        C=cfg.svc_c,
+        class_weight=cfg.svc_class_weight if cfg.svc_class_weight != "none" else None,
+        random_state=cfg.random_state,
+        max_iter=2000,
+    )
     clf.fit(X, y)
     return {
         "classifier": clf,

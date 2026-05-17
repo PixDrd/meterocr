@@ -108,6 +108,7 @@ def load_default_configs(path: Path) -> tuple[HOGConfig, NormalizationConfig, Tr
         knn_neighbors=train_data.get("knn_neighbors", 3),
         knn_weights=train_data.get("knn_weights", "distance"),
         svc_c=train_data.get("svc_c", 1.0),
+        svc_class_weight=train_data.get("svc_class_weight", "balanced"),
         use_standard_scaler=train_data.get("use_standard_scaler", True),
     )
 

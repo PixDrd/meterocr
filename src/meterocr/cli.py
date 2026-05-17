@@ -88,6 +88,103 @@ def cmd_label_frame(
     typer.echo(f"Labeled frame {image} for meter {meter} with reading '{reading}'")
 
 
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
+
+
+def _parse_meter_reading(stem: str) -> tuple[str, str]:
+    """Parse meter id and reading from a filename stem.
+
+    Mirrors autolabel.sh exactly:
+      meter   = part before the first '_', uppercased
+      reading = part after the second '_' (or after the first '_' if there is
+                no second one), i.e. the timestamp segment is dropped.
+    """
+    meter = stem.split("_", 1)[0].upper()
+    rest = stem.split("_", 1)[1] if "_" in stem else ""
+    reading = rest.split("_", 1)[1] if "_" in rest else rest
+    return meter, reading
+
+
+@app.command("label-frame-recursively")
+def cmd_label_frame_recursively(
+    folder: Annotated[Path, typer.Argument(help="Folder to scan recursively for images")],
+    configs: Annotated[Path, typer.Option(help="Path to meters.yaml")] = _DEFAULT_CONFIGS,
+    defaults: Annotated[Path, typer.Option(help="Path to defaults.yaml")] = _DEFAULT_DEFAULTS,
+    frames_csv: Annotated[Path, typer.Option(help="Path to frames.csv")] = _DEFAULT_FRAMES_CSV,
+    samples_csv: Annotated[Path, typer.Option(help="Path to samples.csv")] = _DEFAULT_SAMPLES_CSV,
+    raw_cell_dir: Annotated[Path, typer.Option(help="Raw cell output dir")] = _DEFAULT_RAW_CELL_DIR,
+    normalized_dir: Annotated[Path, typer.Option(help="Normalized output dir")] = _DEFAULT_NORMALIZED_DIR,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Only print parsed meter/reading, do not label")] = False,
+) -> None:
+    """Label every image under a folder in one process (fast replacement for autolabel.sh).
+
+    Filenames must follow the autolabel.sh convention
+    ``<meter>_<timestamp>_<reading>.<ext>`` (the meter prefix is matched
+    case-insensitively and the reading is zero-padded to the meter's digit
+    count). Configs and meter definitions are loaded once and the whole batch
+    runs in a single Python process, avoiding the per-image interpreter and
+    library startup cost.
+    """
+    meter_configs = load_meter_configs(configs)
+    _, norm_cfg, _ = load_default_configs(defaults)
+
+    images = sorted(
+        p for p in folder.rglob("*")
+        if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES
+    )
+    if not images:
+        typer.echo(f"No image files found in {folder}", err=True)
+        raise typer.Exit(1)
+
+    labeled = 0
+    failures: list[tuple[Path, str]] = []
+
+    for image in images:
+        meter, raw_reading = _parse_meter_reading(image.stem)
+
+        try:
+            meter_config = get_meter_config(meter_configs, meter)
+        except Exception as e:
+            failures.append((image, f"unknown meter '{meter}': {e}"))
+            typer.echo(f"  SKIP {image}: unknown meter '{meter}'", err=True)
+            continue
+
+        width = len(meter_config.digit_boxes)
+        if not raw_reading.isdigit():
+            failures.append((image, f"non-numeric reading '{raw_reading}'"))
+            typer.echo(f"  SKIP {image}: non-numeric reading '{raw_reading}'", err=True)
+            continue
+        reading = raw_reading.zfill(width)
+
+        typer.echo(f"Labeling {image}  meter={meter}  reading={reading}")
+        if dry_run:
+            continue
+
+        try:
+            label_frame(
+                image_path=image,
+                meter_config=meter_config,
+                normalization_cfg=norm_cfg,
+                full_reading=reading,
+                frames_csv=frames_csv,
+                samples_csv=samples_csv,
+                raw_cell_dir=raw_cell_dir,
+                normalized_dir=normalized_dir,
+            )
+            labeled += 1
+        except Exception as e:
+            failures.append((image, str(e)))
+            typer.echo(f"  FAIL {image}: {e}", err=True)
+
+    typer.echo("")
+    if dry_run:
+        typer.echo(f"Dry run: {len(images)} images scanned, {len(failures)} would be skipped.")
+    else:
+        typer.echo(f"Labeled {labeled} frames, {len(failures)} skipped/failed.")
+    if failures:
+        raise typer.Exit(1)
+
+
 @app.command("train")
 def cmd_train(
     samples_csv: Annotated[Path, typer.Option("--samples", help="Path to samples.csv")] = _DEFAULT_SAMPLES_CSV,

@@ -23,4 +23,5 @@ training:
   knn_neighbors: 3
   knn_weights: distance
   svc_c: 1.0
+  svc_class_weight: {5: 2, 9: 2}
   use_standard_scaler: true

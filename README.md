@@ -180,6 +180,30 @@ Inspect the normalized images to verify that the digit shapes look clean and con
 
 **Minimum to train a first model:** 10–20 labeled frames spread across different readings. More is better. The classifier is pooled, so a digit `3` from meter M1 helps classify `3` on M2 and M3.
 
+### Bulk labeling a folder
+
+When you have many pre-named images to label at once, use `label-frame-recursively` instead of calling `label-frame` per file. It scans a folder recursively and labels every image in a single process, so the interpreter and library import cost is paid once instead of once per image (roughly 8× faster on a small batch, and the gap widens with larger datasets):
+
+```bash
+meterocr label-frame-recursively path/to/images/
+```
+
+Filenames must follow the convention `<meter>_<timestamp>_<reading>.<ext>`, for example `m1_1774769400_5463.jpg`:
+
+- The part before the first `_` is the meter ID (matched case-insensitively, so `m1` → `M1`).
+- The part after the second `_` is the reading. It is zero-padded to the meter's digit count, so `5463` becomes `05463` for a 5-digit meter.
+- The timestamp segment between them is ignored.
+
+Images are processed in sorted order. A file with an unknown meter, a non-numeric reading, or an unreadable image is skipped with a message rather than aborting the batch; the command prints a `Labeled N frames, M skipped/failed` summary and exits non-zero if anything was skipped.
+
+Preview the parsing without writing anything:
+
+```bash
+meterocr label-frame-recursively path/to/images/ --dry-run
+```
+
+Like `label-frame`, this appends to the dataset every time it runs — there is no deduplication, so running it twice on the same folder doubles the samples. The `--frames-csv`, `--samples-csv`, `--raw-cell-dir`, and `--normalized-dir` options override the default output paths.
+
 ---
 
 ## Train
